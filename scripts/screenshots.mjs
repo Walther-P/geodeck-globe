@@ -132,8 +132,11 @@ for (const s of shots) {
   if (s.locate) {
     await page.click("#locate");
     await page.waitForTimeout(1200);
-    // A phone facing east (alpha 270 → heading 90°).
-    await page.evaluate(() => dispatchEvent(new DeviceOrientationEvent("deviceorientationabsolute", { alpha: 270, beta: 0, gamma: 0, absolute: true })));
+    // A phone facing east (alpha 270 → heading 90°), as a few compass readings.
+    for (let i = 0; i < 3; i++) {
+      await page.evaluate(() => dispatchEvent(new DeviceOrientationEvent("deviceorientationabsolute", { alpha: 270, beta: 0, gamma: 0, absolute: true })));
+      await page.waitForTimeout(150);
+    }
   }
   if (s.share) {
     await page.fill("#search", s.share);

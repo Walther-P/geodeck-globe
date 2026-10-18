@@ -119,11 +119,11 @@ export class Locator {
       const diff = ((h - this.heading + 540) % 360) - 180;
       this.heading = (this.heading + diff * 0.3 + 360) % 360;
     }
+    this.el.dataset.heading = "on";
+    // Compass events arrive faster than frames; rotate once per frame.
     this.frame ||= requestAnimationFrame(() => {
       this.frame = 0;
-      if (this.heading === null) return;
-      this.el.dataset.heading = "on";
-      this.marker?.setRotation(this.heading);
+      if (this.heading !== null) this.marker?.setRotation(this.heading);
     });
   }
 }
