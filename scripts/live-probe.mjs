@@ -22,7 +22,7 @@ const page = await browser.newPage();
 // away mid-probe and fetches carry this site's origin like the app's do.
 await page.goto(new URL("icon.svg", base).toString());
 
-const keys = { tdxId: process.env.PROBE_TDX_ID ?? "", tdxSecret: process.env.PROBE_TDX_SECRET ?? "", cwa: process.env.PROBE_CWA_KEY ?? "", google: process.env.PROBE_GOOGLE_KEY ?? "" };
+const keys = { tdxId: process.env.PROBE_TDX_ID ?? "", tdxSecret: process.env.PROBE_TDX_SECRET ?? "", cwa: process.env.PROBE_CWA_KEY ?? "", google: (process.env.PROBE_GOOGLE_KEY ?? "").trim() };
 const results = await page.evaluate(async (keys) => {
   const rows = [];
   const now = Math.floor(Date.now() / 1000);
@@ -122,12 +122,14 @@ const results = await page.evaluate(async (keys) => {
 
   if (keys.google) {
     const g = "https://tile.googleapis.com";
+    // Says whether the secret even looks like an API key, without printing it.
+    const shape = /^AIza[0-9A-Za-z_-]{35}$/.test(keys.google) ? "secret looks like an API key" : `secret is NOT an API key (${keys.google.length} chars, starts "${keys.google.slice(0, 2)}…")`;
     const row = { name: "Google Map Tiles (site key)", direct: "", relay: "-", note: "" };
     try {
       const r = await fetch(`${g}/v1/createSession?key=${encodeURIComponent(keys.google)}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mapType: "roadmap", language: "zh-TW", region: "TW", layerTypes: ["layerTraffic"] }) });
       const d = await r.json();
       row.direct = r.ok ? "ok" : `HTTP ${r.status}`;
-      if (!d.session) row.note = JSON.stringify(d).slice(0, 300);
+      if (!d.session) row.note = `${shape}; ${JSON.stringify(d).slice(0, 260)}`;
       else {
         const q = `session=${encodeURIComponent(d.session)}&key=${encodeURIComponent(keys.google)}`;
         const tile = await fetch(`${g}/v1/2dtiles/6/53/27?${q}`);
