@@ -9,9 +9,11 @@ import { WeatherLens } from "./lenses/weather";
 import type { AppContext, Lens, LensId, Tone } from "./lenses/lens";
 import { read, write } from "./lib/store";
 import { escapeHtml as esc, formatCoord } from "./lib/util";
+import { Basemap } from "./map/basemap";
 import { addIcons, createGlobe } from "./map/globe";
 import { $, Sheet, toast } from "./ui/dom";
 import { NowBar } from "./ui/now";
+import { openLayers } from "./ui/layers";
 import { openPlace } from "./ui/place";
 import { openSaved } from "./ui/saved";
 import { Locator } from "./ui/locate";
@@ -20,6 +22,7 @@ import { openSettings } from "./ui/settings";
 
 const sheet = new Sheet();
 const map = createGlobe($("map"), () => toast("地圖底圖連線失敗，暫時只顯示陸地輪廓；其他資訊仍可使用", 6000));
+const basemap = new Basemap(map, toast);
 
 // ---- Lenses -----------------------------------------------------------------
 
@@ -131,7 +134,11 @@ document.querySelectorAll<HTMLButtonElement>(".dock [data-lens]").forEach((b) =>
   }),
 );
 
-onKeysChange(() => renderStrip());
+onKeysChange(() => {
+  renderStrip();
+  // Adding or removing a Google key switches the map to or from Google.
+  void basemap.apply();
+});
 
 // ---- Map interaction ----------------------------------------------------------
 
@@ -251,7 +258,12 @@ const now = new NowBar(
   },
 );
 
-const search = setupSearch({ map, choose: (p) => showPlace(p), openSettings: (section) => ctx.openSettings(section) });
+const search = setupSearch({
+  map,
+  choose: (p) => showPlace(p),
+  openSettings: (section) => ctx.openSettings(section),
+  useGoogleMap: () => basemap.set({ ...basemap.choice(), base: "g-road" }),
+});
 
 // Android "share to 百眼" (manifest share_target) and ?q= links land here.
 const shared = new URLSearchParams(location.search);
@@ -265,6 +277,7 @@ if (sharedText) {
   });
 }
 $("openSettings").addEventListener("click", () => ctx.openSettings());
+$("layers").addEventListener("click", () => openLayers(sheet, basemap, (section) => ctx.openSettings(section)));
 $("openSaved").addEventListener("click", () => openSaved(sheet, toast, (p, intent) => showPlace(p, intent)));
 
 addEventListener("offline", () => toast("目前離線：收藏與已載入的資料仍可查看"));

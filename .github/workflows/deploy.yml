@@ -93,6 +93,8 @@ jobs:
           PROBE_TDX_ID: ${{ secrets.PROBE_TDX_ID }}
           PROBE_TDX_SECRET: ${{ secrets.PROBE_TDX_SECRET }}
           PROBE_CWA_KEY: ${{ secrets.PROBE_CWA_KEY }}
+          # The site's own browser key (already public in the bundle); only the deployed origin is allowed to use it.
+          PROBE_GOOGLE_KEY: ${{ secrets.GOOGLE_MAPS_KEY }}
         run: node scripts/live-probe.mjs
       - uses: actions/upload-artifact@v4
         if: always()

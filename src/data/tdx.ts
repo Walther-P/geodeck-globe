@@ -49,35 +49,68 @@ export function forgetTdxToken(): void {
   remove(TOKEN_STORAGE);
 }
 
-// TDX's free tier allows only a few calls per second per key, and opening a
-// lens can ask for half a dozen feeds at once: send them one at a time.
+// A free TDX key gets about five data calls a minute (measured 2026-10-18:
+// the sixth within a minute answers 429 with Retry-After ≈ 20 s). Every call
+// waits its turn in one queue that keeps to that budget and honours
+// Retry-After; what the visitor is waiting on most goes first.
+const BUDGET = 5;
+const WINDOW_MS = 60000;
 const SPACING_MS = 500;
-let queue: Promise<unknown> = Promise.resolve();
-let lastCall = 0;
+/** Lower goes first; equal priorities keep their order. */
+export const PRIORITY = { parking: 0, buses: 1, lists: 2 } as const;
+const jobs: Array<{ priority: number; start: () => void }> = [];
+let pumping = false;
+let recent: number[] = [];
+let blockedUntil = 0;
 
-function paced<T>(fn: () => Promise<T>): Promise<T> {
-  const run = queue.catch(() => {}).then(async () => {
-    const wait = lastCall + SPACING_MS - Date.now();
-    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-    lastCall = Date.now();
-    return fn();
-  });
-  queue = run;
-  return run;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** How long the next call must wait, given the start times of recent calls (oldest first). */
+export function budgetWait(now: number, calls: number[], until = 0): number {
+  const inWindow = calls.filter((t) => t > now - WINDOW_MS);
+  const full = inWindow.length >= BUDGET ? inWindow[inWindow.length - BUDGET] + WINDOW_MS - now : 0;
+  return Math.max(0, until - now, full, (inWindow.at(-1) ?? -Infinity) + SPACING_MS - now);
 }
 
-export async function tdxGet<T>(path: string, params: Record<string, string> = {}, signal?: AbortSignal): Promise<T> {
+function paced<T>(fn: () => Promise<T>, priority: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    jobs.push({ priority, start: () => fn().then(resolve, reject) });
+    jobs.sort((a, z) => a.priority - z.priority);
+    void pump();
+  });
+}
+
+async function pump(): Promise<void> {
+  if (pumping) return;
+  pumping = true;
+  while (jobs.length) {
+    for (;;) {
+      const now = Date.now();
+      recent = recent.filter((t) => t > now - WINDOW_MS);
+      const wait = budgetWait(now, recent, blockedUntil);
+      if (wait <= 0) break;
+      await sleep(wait);
+    }
+    recent.push(Date.now());
+    jobs.shift()!.start();
+  }
+  pumping = false;
+}
+
+export async function tdxGet<T>(path: string, params: Record<string, string> = {}, signal?: AbortSignal, priority: number = PRIORITY.lists): Promise<T> {
   const url = `${TDX_BASE}${path}?${new URLSearchParams({ $format: "JSON", ...params })}`;
   const attempt = async () => {
     const token = await tdxToken();
-    return paced(() =>
-      getJson<T>(url, {
-        headers: { authorization: `Bearer ${token}`, accept: "application/json" },
-        // TDX doesn't allow browser reads (no CORS), so always via our relay.
-        route: "relay",
-        timeout: 20000,
-        signal,
-      }),
+    return paced(
+      () =>
+        getJson<T>(url, {
+          headers: { authorization: `Bearer ${token}`, accept: "application/json" },
+          // TDX doesn't allow browser reads (no CORS), so always via our relay.
+          route: "relay",
+          timeout: 20000,
+          signal,
+        }),
+      priority,
     );
   };
   try {
@@ -88,30 +121,56 @@ export async function tdxGet<T>(path: string, params: Record<string, string> = {
       forgetTdxToken();
       return attempt();
     }
-    // Over the rate limit: wait a moment and try once more.
+    // Over the limit anyway (another tab, another device on this key): hold
+    // every TDX call until TDX says, then try this one once more.
     if (e instanceof FeedError && e.status === 429 && !signal?.aborted) {
-      await new Promise((r) => setTimeout(r, 3000));
+      blockedUntil = Math.max(blockedUntil, Date.now() + (e.retryAfter ?? 20) * 1000);
       return attempt().catch((again: unknown) => {
-        throw again instanceof FeedError && again.status === 429 ? new FeedError("TDX 呼叫太頻繁，稍後自動再試", 429) : again;
+        throw again instanceof FeedError && again.status === 429 ? new FeedError("TDX 免費額度每分鐘只能讀幾次，稍後自動更新", 429) : again;
       });
     }
     throw e;
   }
 }
 
-// Positions and names barely change while counts change every minute, so the
-// static lists are kept for hours: a refresh then costs one call per feed.
+// Positions, names and camera lists barely change while counts change every
+// minute, so the static lists are kept for hours, also across app restarts
+// (when small enough for storage): a refresh then costs one call per feed.
 const STATIC_MS = 6 * 3600000;
+const STATIC_STORAGE = "gdg.tdx.static.v1:";
+const STATIC_INDEX = "gdg.tdx.static.index.v1";
+// Small enough that cached lists can never crowd out the visitor's own keys.
+const STATIC_MAX_CHARS = 400_000;
+const STATIC_MAX_ENTRIES = 4;
 const staticLists = new Map<string, { at: number; data: Promise<unknown> }>();
 
-function tdxStatic<T>(path: string, params: Record<string, string> = {}): Promise<T> {
+function tdxStatic<T>(path: string, params: Record<string, string> = {}, priority: number = PRIORITY.lists): Promise<T> {
   const key = `${path}?${new URLSearchParams(params)}`;
   const hit = staticLists.get(key);
   if (hit && Date.now() - hit.at < STATIC_MS) return hit.data as Promise<T>;
-  const data = tdxGet<T>(path, params);
-  staticLists.set(key, { at: Date.now(), data });
-  data.catch(() => staticLists.delete(key));
+  const stored = read<{ at: number; data: T } | null>(STATIC_STORAGE + key, null);
+  if (stored && Date.now() - stored.at < STATIC_MS) {
+    staticLists.set(key, { at: stored.at, data: Promise.resolve(stored.data) });
+    return Promise.resolve(stored.data);
+  }
+  const data = tdxGet<T>(path, params, undefined, priority);
+  const at = Date.now();
+  staticLists.set(key, { at, data });
+  data.then(
+    (d) => keepStatic(key, at, d),
+    () => staticLists.delete(key),
+  );
   return data;
+}
+
+function keepStatic(key: string, at: number, data: unknown): void {
+  const entry = { at, data };
+  if (JSON.stringify(entry).length > STATIC_MAX_CHARS) return;
+  // Newest first; the oldest beyond the limit are dropped.
+  const index = [key, ...read<string[]>(STATIC_INDEX, []).filter((k) => k !== key)];
+  for (const old of index.splice(STATIC_MAX_ENTRIES)) remove(STATIC_STORAGE + old);
+  write(STATIC_INDEX, index);
+  write(STATIC_STORAGE + key, entry);
 }
 
 /** A feed's row array, whatever this version of the feed calls it ("…Availabilities"). */
@@ -209,8 +268,12 @@ export function normalizeLiveLots(
 
 export async function liveLots(city: string, signal?: AbortSignal): Promise<LiveLot[]> {
   const [parks, avail] = await Promise.all([
-    tdxStatic<{ CarParks?: TdxCarPark[] }>(`/api/basic/v1/Parking/OffStreet/CarPark/City/${city}`),
-    tdxGet<{ ParkingAvailabilities?: TdxAvailability[] }>(`/api/basic/v1/Parking/OffStreet/ParkingAvailability/City/${city}`, {}, signal),
+    tdxStatic<{ CarParks?: TdxCarPark[] }>(
+      `/api/basic/v1/Parking/OffStreet/CarPark/City/${city}`,
+      { $select: "CarParkID,CarParkName,CarParkPosition,Address,FareDescription" },
+      PRIORITY.parking,
+    ),
+    tdxGet<{ ParkingAvailabilities?: TdxAvailability[] }>(`/api/basic/v1/Parking/OffStreet/ParkingAvailability/City/${city}`, {}, signal, PRIORITY.parking),
   ]);
   return normalizeLiveLots(parks, avail, city);
 }
@@ -272,10 +335,12 @@ export function normalizeCurbs(segments: unknown, availability: unknown, city: s
 
 export async function liveCurbs(city: string, signal?: AbortSignal): Promise<LiveLot[]> {
   const [segments, avail] = await Promise.all([
-    tdxStatic(`/api/basic/v1/Parking/OnStreet/ParkingSegment/City/${city}`, {
-      $select: "ParkingSegmentID,ParkingSegmentName,ParkingSegmentPosition,FareDescription",
-    }),
-    tdxGet(`/api/basic/v1/Parking/OnStreet/ParkingSegmentAvailability/City/${city}`, {}, signal),
+    tdxStatic(
+      `/api/basic/v1/Parking/OnStreet/ParkingSegment/City/${city}`,
+      { $select: "ParkingSegmentID,ParkingSegmentName,ParkingSegmentPosition,FareDescription" },
+      PRIORITY.parking,
+    ),
+    tdxGet(`/api/basic/v1/Parking/OnStreet/ParkingSegmentAvailability/City/${city}`, {}, signal, PRIORITY.parking),
   ]);
   return normalizeCurbs(segments, avail, city);
 }
@@ -348,9 +413,9 @@ export function normalizeCctv(data: { CCTVs?: TdxCctv[] } | TdxCctv[], scope: st
   return out;
 }
 
-export async function cctv(scope: "Freeway" | "Highway" | string, signal?: AbortSignal): Promise<Camera[]> {
+export async function cctv(scope: "Freeway" | "Highway" | string): Promise<Camera[]> {
   const path = scope === "Freeway" || scope === "Highway" ? `/api/basic/v2/Road/Traffic/CCTV/${scope}` : `/api/basic/v2/Road/Traffic/CCTV/City/${scope}`;
-  return normalizeCctv(await tdxGet(path, {}, signal), scope);
+  return normalizeCctv(await tdxStatic<{ CCTVs?: TdxCctv[] }>(path), scope);
 }
 
 // ---- Buses ---------------------------------------------------------------
@@ -395,6 +460,7 @@ export async function buses(city: string, signal?: AbortSignal): Promise<Bus[]> 
     `/api/basic/v2/Bus/RealTimeByFrequency/City/${city}`,
     { $select: "PlateNumb,RouteName,BusPosition,Speed,Azimuth,GPSTime,DutyStatus,BusStatus" },
     signal,
+    PRIORITY.buses,
   );
   return normalizeBuses(rows);
 }
@@ -403,6 +469,6 @@ export async function buses(city: string, signal?: AbortSignal): Promise<Bus[]> 
 export async function testTdx(): Promise<string> {
   forgetTdxToken();
   await tdxToken();
-  const rows = await tdxGet<{ CarParks?: unknown[] }>(`/api/basic/v1/Parking/OffStreet/CarPark/City/Tainan`, { $top: "1" });
+  const rows = await tdxGet<{ CarParks?: unknown[] }>(`/api/basic/v1/Parking/OffStreet/CarPark/City/Tainan`, { $top: "1" }, undefined, PRIORITY.parking);
   return Array.isArray(rows.CarParks) ? "TDX 金鑰可用" : "已登入，但回傳格式和預期不同";
 }

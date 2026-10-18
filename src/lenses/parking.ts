@@ -113,47 +113,66 @@ export class ParkingLens implements Lens {
       }
       setData(map, "pk-summary", EMPTY);
       this.catalog = await catalogLots(view);
-      const live = this.on.live && hasTdx() ? await this.liveFor(view, zoom, refreshLive) : [];
       if (seq !== this.seq) return;
-      const merged = mergeLots(this.catalog, live);
-      const now = Date.now();
-      const features: GeoJSON.Feature[] = [];
-      for (const p of merged.catalog) {
-        if (p.kind === "lot" ? !this.on.lots : !this.on.curb) continue;
-        features.push(feature(p.id, p.lng, p.lat, { kind: p.kind, count: "", state: "none", available: -1 }));
-      }
-      for (const l of merged.live) {
-        if (l.kind === "lot" ? !this.on.lots : !this.on.curb) continue;
-        const s = liveStatus(l, now);
-        // "?" means this place reports counts but the latest one is too old to trust.
-        features.push(feature(l.id, l.lng, l.lat, { kind: l.kind, count: s.label, state: s.state, available: l.available ?? -1 }));
-      }
-      setData(map, "pk", { type: "FeatureCollection", features });
-      this.drawLayers();
-      const parts = [`${features.length.toLocaleString()} 處`];
-      if (hasTdx() && this.on.live) {
-        const counted = (["lot", "curb"] as const).flatMap((kind) => {
-          const rows = merged.live.filter((l) => l.kind === kind);
-          const fresh = rows.filter((l) => ["fresh", "full"].includes(liveStatus(l, now).state)).length;
-          return rows.length ? [`${kind === "lot" ? "停車場" : "路段"} ${fresh}/${rows.length}`] : [];
-        });
-        parts.push(counted.length ? `即時：${counted.join("、")} 有 5 分鐘內資料` : "此區沒有 TDX 即時車位");
-      } else parts.push("即時車位需 TDX 金鑰");
-      if (this.liveErrors.length) parts.push(this.liveErrors.join("；"));
-      this.ctx.status("parking", parts.join(" · "), this.liveErrors.length ? "warn" : undefined);
+      const wantLive = this.on.live && hasTdx();
+      const feeds = wantLive ? this.feedsFor(view, zoom) : [];
+      // Draw the catalog and the last counts we have right away; TDX may take
+      // a while when the key's per-minute budget is used up.
+      this.draw(feeds.flatMap((f) => this.live.get(f.key)?.lots ?? []), wantLive ? "pending" : "off");
+      if (!wantLive) return;
+      const live = await this.fetchLive(feeds, refreshLive);
+      if (seq !== this.seq) return;
+      this.draw(live, "done");
     } catch (e) {
       this.ctx.status("parking", `停車資料暫時無法讀取：${(e as Error).message}`, "bad");
     }
   }
 
-  private async liveFor(view: ReturnType<typeof viewBounds>, zoom: number, force: boolean): Promise<LiveLot[]> {
+  private draw(live: LiveLot[], phase: "off" | "pending" | "done"): void {
+    const merged = mergeLots(this.catalog, live);
+    const now = Date.now();
+    const features: GeoJSON.Feature[] = [];
+    for (const p of merged.catalog) {
+      if (p.kind === "lot" ? !this.on.lots : !this.on.curb) continue;
+      features.push(feature(p.id, p.lng, p.lat, { kind: p.kind, count: "", state: "none", available: -1 }));
+    }
+    for (const l of merged.live) {
+      if (l.kind === "lot" ? !this.on.lots : !this.on.curb) continue;
+      const s = liveStatus(l, now);
+      // "?" means this place reports counts but the latest one is too old to trust.
+      features.push(feature(l.id, l.lng, l.lat, { kind: l.kind, count: s.label, state: s.state, available: l.available ?? -1 }));
+    }
+    setData(this.ctx.map, "pk", { type: "FeatureCollection", features });
+    this.drawLayers();
+    const parts = [`${features.length.toLocaleString()} 處`];
+    if (phase === "off") parts.push(hasTdx() ? "即時車位已關閉" : "即時車位需 TDX 金鑰");
+    else {
+      const counted = (["lot", "curb"] as const).flatMap((kind) => {
+        const rows = merged.live.filter((l) => l.kind === kind);
+        const fresh = rows.filter((l) => ["fresh", "full"].includes(liveStatus(l, now).state)).length;
+        return rows.length ? [`${kind === "lot" ? "停車場" : "路段"} ${fresh}/${rows.length}`] : [];
+      });
+      if (counted.length) parts.push(`即時：${counted.join("、")} 有 5 分鐘內資料`);
+      parts.push(phase === "pending" ? "正在更新即時車位…" : counted.length ? "" : "此區沒有 TDX 即時車位");
+    }
+    const errors = phase === "done" ? this.liveErrors : [];
+    if (errors.length) parts.push(errors.join("；"));
+    this.ctx.status("parking", parts.filter(Boolean).join(" · "), errors.length ? "warn" : undefined);
+  }
+
+  private feedsFor(view: ReturnType<typeof viewBounds>, zoom: number): Array<{ key: string; code: string; name: string; kind: LiveLot["kind"] }> {
     const center = { lat: (view.north + view.south) / 2, lng: (view.east + view.west) / 2 };
     const feeds: Array<{ key: string; code: string; name: string; kind: LiveLot["kind"] }> = [];
-    for (const c of citiesAt(center).slice(0, 2)) {
+    // Only the city under the map centre: each city is two calls a minute.
+    for (const c of citiesAt(center).slice(0, 1)) {
       if (this.on.lots) feeds.push({ key: `lot:${c.code}`, code: c.code, name: c.name, kind: "lot" });
       // Kerbside counts only help street by street, and each city is one more TDX call.
       if (this.on.curb && zoom >= 13 && !this.noCurbFeed.has(c.code)) feeds.push({ key: `curb:${c.code}`, code: c.code, name: c.name, kind: "curb" });
     }
+    return feeds;
+  }
+
+  private async fetchLive(feeds: ReturnType<ParkingLens["feedsFor"]>, force: boolean): Promise<LiveLot[]> {
     this.liveErrors = [];
     const out: LiveLot[] = [];
     await Promise.all(

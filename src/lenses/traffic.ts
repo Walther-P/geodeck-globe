@@ -73,7 +73,8 @@ export class TrafficLens implements Lens {
     if (this.on.cameras) void this.loadCameras();
     if (this.on.speed) void this.loadSpeed();
     if (this.on.buses) void this.loadBuses();
-    this.stops.push(every(20000, () => void this.loadBuses()));
+    // Once a minute: a free TDX key only has about five calls a minute for everything.
+    this.stops.push(every(60000, () => void this.loadBuses()));
     this.report();
   }
 

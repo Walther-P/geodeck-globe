@@ -32,7 +32,9 @@ interface GoogleMaps {
 const SITE_KEY = (import.meta.env.VITE_GOOGLE_MAPS_KEY ?? "").trim();
 
 export const siteGoogleKey = () => !!SITE_KEY;
-export const googleAvailable = () => !!(keys().google || SITE_KEY);
+/** The visitor's own key wins over the site's. */
+export const googleKey = () => keys().google || SITE_KEY;
+export const googleAvailable = () => !!googleKey();
 
 let loading: { key: string; ready: Promise<GoogleMaps> } | null = null;
 let authFailed = false;
@@ -68,7 +70,7 @@ function load(key: string): Promise<GoogleMaps> {
 }
 
 export async function googleSearch(text: string, near: Point | null): Promise<Place[]> {
-  const key = keys().google || SITE_KEY;
+  const key = googleKey();
   if (!key) return [];
   const google = await load(key);
   const { Place: GPlace } = await google.maps.importLibrary("places");

@@ -8,6 +8,8 @@ export class FeedError extends Error {
   constructor(
     message: string,
     readonly status = 0,
+    /** Seconds the source asked us to wait (Retry-After), when it said. */
+    readonly retryAfter: number | null = null,
   ) {
     super(message);
   }
@@ -71,7 +73,10 @@ async function send(url: string, opts: FetchOptions): Promise<Response> {
 }
 
 function checked(r: Response): Response {
-  if (!r.ok) throw new FeedError(statusText(r.status), r.status);
+  if (!r.ok) {
+    const wait = Number(r.headers.get("retry-after"));
+    throw new FeedError(statusText(r.status), r.status, Number.isFinite(wait) && wait > 0 ? wait : null);
+  }
   return r;
 }
 

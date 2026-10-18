@@ -12,7 +12,8 @@
 | --- | --- | --- |
 | 地圖 | 免費深色向量地圖（OpenFreeMap），可從太空地球一路放大到 3D 建築；指北、3D 傾斜；夜視／熱感／CRT 畫面濾鏡 | 不用 |
 | 定位 | 藍點跟著 GPS 移動、精度範圍、手機面向的扇形（指南針；iPhone 第一次會詢問方向權限） | 不用 |
-| 搜尋 | 地名、路名、座標（OpenStreetMap）；**貼上或分享 Google／Apple 地圖連結**直接跳到同一個地點；加上自己的 Google 金鑰後可搜到和 Google 地圖一樣的店家 | Google 搜尋選填 |
+| 地圖 | 百眼深色 3D 地球（免費）；有 Google 金鑰時可換成 **Google 標準／深色／衛星／地形**，加上**路況**與**街景範圍**，一樣是可旋轉的地球 | Google 地圖需金鑰（站長提供則免設定） |
+| 搜尋 | 地名、路名、座標（OpenStreetMap）；**貼上或分享 Google／Apple 地圖連結**直接跳到同一個地點；用 Google 地圖時可搜到和 Google 地圖一樣的店家 | Google 搜尋同上 |
 | 此刻列 | 我的位置或地圖中心：天氣、三小時內何時下雨、AQI、附近 6 小時內 M4+ 地震、所在縣市天氣特報 | 特報要氣象署 |
 | 天氣視角 | 雷達回波（可回放）、向日葵衛星雲圖、颱風路徑與七級風圈、天氣特報 | 颱風、特報要氣象署 |
 | 交通視角 | 11,514 支道路與河川影像，點開直接看畫面（官方即時串流，或轉載快照每 30 秒更新）；警政署測速點；公車即時位置；有 TDX 時改用官方的縣市即時影像 | 公車要 TDX |
@@ -28,9 +29,10 @@
 - **TDX 運輸資料流通服務**（免費）：<https://tdx.transportdata.tw/register> 註冊 → 會員中心 → API 金鑰，取得 Client Id 與 Client Secret。
 - **中央氣象署開放資料**（免費）：<https://opendata.cwa.gov.tw/user/authkey> 登入 → 取得授權碼（CWA- 開頭）。
 
-**Google 地點搜尋**：站長在 repository secrets 設定 `GOOGLE_MAPS_KEY`（瀏覽器金鑰，限制在本站網址）後，
-所有人都能直接搜到和 Google 地圖一樣的店家；使用者也可以在設定填自己的 **Google 地點搜尋金鑰**（Google Cloud：啟用 Maps JavaScript API 與 Places API (New)，金鑰限制在本站網址；
-需要帳單帳戶，每月有免費用量）。沒有這把金鑰也能貼上 Google 地圖的分享連結。
+**Google 地圖與搜尋**：站長在 repository secrets 設定 `GOOGLE_MAPS_KEY`（瀏覽器金鑰，限制在本站網址）後，
+所有人打開就是 Google 地圖、搜得到和 Google 地圖一樣的店家，不用任何設定；使用者也可以在設定填自己的金鑰
+（Google Cloud：啟用 Map Tiles API、Maps JavaScript API、Places API (New)，金鑰限制在本站網址；需要帳單帳戶，
+每月有免費用量：地圖圖磚每月 10 萬格）。沒有金鑰也能用百眼深色地圖，也能貼上 Google 地圖的分享連結。
 
 金鑰只存在該使用者手機的瀏覽器（localStorage），直接送到官方網站；只有官方網站不允許瀏覽器直接讀取時，
 才會經過本站 Worker 的轉送（`/relay`），轉送不儲存、不快取、不記錄帶金鑰的請求（見 `worker/relay.ts`）。

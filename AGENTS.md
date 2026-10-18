@@ -14,6 +14,8 @@
 - `src/ui/`：此刻列、地點卡、搜尋、收藏、設定
 - `worker/relay.ts`：轉送白名單（純函式，有測試）
 - `worker/resolve.ts` + `/api/resolve`：追 Google 地圖分享短網址到實際地點；`src/data/maplinks.ts` 解析各種地圖連結
+- `src/map/basemap.ts` + `src/ui/layers.ts`：底圖切換（百眼深色／Google 標準、深色、衛星、地形＋路況、街景範圍），
+  Google 圖磚走 Map Tiles API，圖層合併在同一個 session（每格只計費一次）；必須顯示 Google 標誌與版權字
 - `src/data/google.ts`：Google 地點搜尋。站長金鑰在建置時由 `GOOGLE_MAPS_KEY` secret 注入
   （`VITE_GOOGLE_MAPS_KEY`，瀏覽器金鑰，必須限制網址）；使用者也可在設定填自己的（優先使用）
 - `worker/camera.ts` + `/api/cam`：只限 `*.gov.tw` 的 http 影像串流轉接（https 頁面不能載入 http 影像）
@@ -35,7 +37,9 @@
 3. **資料誠實**：顯示來源與時間；沒有時間的即時數字不當成即時；即時車位超過 5 分鐘顯示「?」
    （`LIVE_MAX_AGE_MS`）；缺值顯示「—」或「未知」，不要當成 0 或「沒有」。
 4. **不要用會計費的服務**（Google Places／Routes／3D Tiles 等）當預設功能；要加先問擁有者。
-   擁有者已同意 Google 地點搜尋用站長金鑰（2026-10-18），只在有人搜尋時才載入，不畫 Google 地圖。
+   擁有者已同意（2026-10-18）用站長金鑰提供 Google 地圖圖磚與地點搜尋，讓使用者不用設定：
+   有金鑰時預設 Google 標準地圖，可在「圖層」改回百眼深色。Google 搜尋結果只在 Google 底圖上使用
+   （Google 條款不允許把 Google 內容放在非 Google 地圖上），所以百眼深色時搜尋改用 OpenStreetMap。
 5. **手機優先**：改介面後跑 `npm run screenshots`，看 393×852 直向與 852×393 橫向，按鈕不能互相遮住。
    觸控目標至少 40px；輸入框字級 16px（避免 iOS 放大）。
 6. **效能**：手機上不要每格重建大量圖層；資料更新用 `setData`。Starlink 這類數千點的圖層要降頻。
@@ -44,8 +48,10 @@
 9. 停車標記：方形藍底 P＝停車場、圓形綠底「路」＝路邊；旁邊數字＝即時剩餘格數（`pk-sign` 圖層）。
    沒有即時來源的停車場不顯示數字，不要拿總車位冒充剩餘格數。
    路邊的數字來自 TDX OnStreet（整個路段合計），放大到 13 級以上才讀。
-10. **TDX 呼叫要省**：免費方案有速率上限（會回 429）。所有 TDX 呼叫經 `tdxGet` 排隊（間隔 500 ms）；
-   位置、名稱這類靜態清單用 `tdxStatic` 快取 6 小時，每分鐘只重讀剩餘格數。
+10. **TDX 呼叫要省**：免費金鑰實測約每分鐘 5 次（第 6 次回 429，Retry-After ≈ 20 秒）。所有 TDX 呼叫經
+   `tdxGet` 的優先佇列（停車 > 公車 > 影像清單），每分鐘最多 5 次並遵守 Retry-After；位置、名稱、
+   影像清單用 `tdxStatic` 快取 6 小時（小的清單也存進 localStorage，最多 4 份）；停車只讀地圖中心的城市，
+   公車每分鐘更新一次。新增 TDX 功能前先算每分鐘會多用幾次。
 
 ## 部署
 

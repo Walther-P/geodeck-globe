@@ -10,11 +10,34 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { mkdirSync } from "node:fs";
+import { crc32, deflateSync } from "node:zlib";
 
 const root = new URL("../dist/", import.meta.url).pathname;
 const out = new URL("../artifacts/screenshots/", import.meta.url).pathname;
 mkdirSync(out, { recursive: true });
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".webmanifest": "application/manifest+json", ".txt": "text/plain" };
+
+/** A tiny RGB PNG drawn by `pixel(x, y)`, for fixture map tiles and logos. */
+function png(w, h, pixel) {
+  const raw = Buffer.alloc((w * 3 + 1) * h);
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) raw.set(pixel(x, y), y * (w * 3 + 1) + 1 + x * 3);
+  const chunk = (type, data) => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(Buffer.concat([Buffer.from(type), data])));
+    return Buffer.concat([len, Buffer.from(type), data, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0);
+  ihdr.writeUInt32BE(h, 4);
+  ihdr.set([8, 2, 0, 0, 0], 8);
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
+}
+// Light "Google-like" tiles: grey land, white roads every 64 px, a red traffic stretch.
+const GOOGLE_TILE = png(256, 256, (x, y) => (y % 64 < 6 && x > 120 && x < 200 ? [217, 48, 37] : x % 64 < 5 || y % 64 < 5 ? [255, 255, 255] : [232, 234, 237]));
+const GOOGLE_LOGO = png(59, 18, () => [255, 255, 255]);
 
 const server = createServer(async (req, res) => {
   const path = normalize(decodeURIComponent(new URL(req.url, "http://x").pathname)).replace(/^\/+/, "") || "index.html";
@@ -104,6 +127,13 @@ const fixtures = {
       };
     return {};
   },
+  "tile.googleapis.com": (url) => {
+    const path = new URL(url).pathname;
+    if (path.endsWith("/createSession")) return { session: "demo-session", expiry: String(Math.floor(now / 1000) + 14 * 86400), tileWidth: 256, tileHeight: 256, imageFormat: "png" };
+    if (path.includes("/viewport")) return { copyright: "Map data ©2026 Google" };
+    return GOOGLE_TILE;
+  },
+  "developers.google.com": () => GOOGLE_LOGO,
   "photon.komoot.io": () => ({ features: [{ geometry: { coordinates: [120.2049, 22.9908] }, properties: { name: "赤崁樓", city: "臺南市", district: "中西區", country: "臺灣", countrycode: "TW" } }] }),
 };
 
@@ -124,6 +154,8 @@ const shots = [
   },
   { name: "phone-place-card", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 14 }, lenses: ["weather"], click: true },
   { name: "phone-settings", w: 393, h: 852, view: { lng: 121, lat: 23.6, zoom: 6 }, lenses: [], settings: true },
+  { name: "phone-google-map", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15.4 }, lenses: ["parking"], google: true, layers: true },
+  { name: "phone-google-parking", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15.4 }, lenses: ["parking"], google: true, healthy: true },
   { name: "phone-landscape", w: 852, h: 393, view: { lng: 121, lat: 23.8, zoom: 6.4 }, lenses: ["sky"], fx: "nvg" },
 ];
 
@@ -138,8 +170,9 @@ for (const s of shots) {
     geolocation: { latitude: 22.9925, longitude: 120.2048, accuracy: 25 },
     permissions: ["geolocation", "accelerometer", "gyroscope", "magnetometer"],
   });
-  await ctx.addInitScript(({ view, lenses, fx, tdx }) => {
-    if (tdx) localStorage.setItem("gdg.keys.v1", JSON.stringify({ tdxId: "demo", tdxSecret: "demo", cwa: "", google: "" }));
+  await ctx.addInitScript(({ view, lenses, fx, tdx, google }) => {
+    if (tdx || google) localStorage.setItem("gdg.keys.v1", JSON.stringify({ tdxId: tdx ? "demo" : "", tdxSecret: tdx ? "demo" : "", cwa: "", google: google ? "demo-key" : "" }));
+    if (google) localStorage.setItem("gdg.basemap.v1", JSON.stringify({ base: "g-road", overlays: ["traffic"] }));
     localStorage.setItem("gdg.view.v1", JSON.stringify(view));
     localStorage.setItem("gdg.lenses.v1", JSON.stringify(lenses));
     if (fx) localStorage.setItem("gdg.fx.v1", JSON.stringify(fx));
@@ -151,7 +184,8 @@ for (const s of shots) {
     const make = fixtures[host];
     if (!make) return route.abort();
     const body = make(route.request().url());
-    await route.fulfill({ status: 200, contentType: typeof body === "string" ? "text/plain" : "application/json", headers: { "access-control-allow-origin": "*" }, body: typeof body === "string" ? body : JSON.stringify(body) });
+    const type = Buffer.isBuffer(body) ? "image/png" : typeof body === "string" ? "text/plain" : "application/json";
+    await route.fulfill({ status: 200, contentType: type, headers: { "access-control-allow-origin": "*" }, body: Buffer.isBuffer(body) || typeof body === "string" ? body : JSON.stringify(body) });
   });
   const page = await ctx.newPage();
   page.on("pageerror", (e) => errors.push(`${s.name}: ${e.message}`));
@@ -161,6 +195,7 @@ for (const s of shots) {
   if (s.tap) await page.click("#now");
   if (s.click) await page.mouse.click(s.w / 2, s.h / 2 - 60);
   if (s.settings) await page.click("#openSettings");
+  if (s.layers) await page.click("#layers");
   if (s.locate) {
     await page.click("#locate");
     await page.waitForTimeout(1200);
@@ -191,6 +226,10 @@ for (const s of shots) {
       }));
       errors.push(`${s.name}: location marker has no heading (${heading}) ${JSON.stringify(info)}`);
     }
+  }
+  if (s.google) {
+    const state = await page.evaluate(() => ({ basemap: document.body.dataset.basemap, copyright: document.querySelector(".gbrand .gcopy")?.textContent, toast: document.getElementById("toast")?.textContent }));
+    if (state.basemap !== "google" || !state.copyright) errors.push(`${s.name}: Google map not shown ${JSON.stringify(state)}`);
   }
   if (s.share) {
     const title = (await page.textContent("#sheetTitle").catch(() => "")) ?? "";

@@ -1081,3 +1081,136 @@ body[data-fx="flir"] .fx {
 .lg-old {
   color: #94a3b8;
 }
+
+/* Google basemap: Google's logo and copyright line must stay visible. */
+.gbrand {
+  position: absolute;
+  left: calc(var(--safe-left) + 12px);
+  bottom: calc(var(--safe-bottom) + var(--dock-h) + 16px);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 90px);
+  font-size: 10px;
+  color: #f1f5f9;
+  text-shadow: 0 0 3px #000, 0 0 6px #000;
+  pointer-events: none;
+  z-index: 3;
+}
+.gbrand img {
+  height: 16px;
+  width: auto;
+}
+.gbrand .gcopy {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+body[data-basemap="google"] .strip {
+  bottom: calc(var(--safe-bottom) + var(--dock-h) + 42px);
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .gbrand {
+    bottom: calc(var(--safe-bottom) + 12px);
+    max-width: 40vw;
+  }
+  body[data-basemap="google"] .strip {
+    bottom: calc(var(--safe-bottom) + var(--dock-h) + 18px);
+  }
+}
+@media (min-width: 900px) {
+  .gbrand {
+    bottom: calc(var(--safe-bottom) + 14px);
+  }
+  body[data-basemap="google"] .strip {
+    bottom: calc(var(--safe-bottom) + var(--dock-h) + 18px);
+  }
+}
+#layers svg {
+  display: block;
+  margin: auto;
+}
+
+/* Map-type picker, like Google Maps' layers sheet. */
+.basemaps {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 10px;
+  margin: 6px 0 14px;
+}
+.basemap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+}
+.basemap small {
+  color: var(--dim);
+  font-size: 10.5px;
+}
+.basemap[aria-pressed="true"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+.basemap[data-locked] {
+  opacity: 0.55;
+}
+.swatch {
+  width: 100%;
+  max-width: 76px;
+  height: 52px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.sw-baiyan {
+  background: linear-gradient(135deg, #04080d 0 35%, #0c1319 35% 100%), #0c1319;
+  box-shadow: inset 0 0 0 2px rgba(94, 234, 212, 0.25);
+}
+.sw-g-road {
+  background:
+    linear-gradient(28deg, transparent 46%, #fbd38d 46% 54%, transparent 54%),
+    linear-gradient(118deg, transparent 47%, #ffffff 47% 53%, transparent 53%),
+    linear-gradient(160deg, #aadaff 0 30%, #e8eaed 30% 100%);
+}
+.sw-g-dark {
+  background:
+    linear-gradient(28deg, transparent 46%, #4a4331 46% 54%, transparent 54%),
+    linear-gradient(118deg, transparent 47%, #25313c 47% 53%, transparent 53%),
+    linear-gradient(160deg, #061019 0 30%, #0c1319 30% 100%);
+}
+.sw-g-sat {
+  background:
+    radial-gradient(circle at 30% 40%, #3f6b3a 0 20%, transparent 21%),
+    radial-gradient(circle at 70% 65%, #6b7f4a 0 24%, transparent 25%),
+    linear-gradient(160deg, #1e3a5f 0 28%, #445a3a 28% 100%);
+}
+.sw-g-terrain {
+  background:
+    radial-gradient(ellipse at 40% 60%, #c9d8b6 0 30%, transparent 31%),
+    radial-gradient(ellipse at 70% 35%, #b7c9a1 0 22%, transparent 23%),
+    linear-gradient(160deg, #aadaff 0 25%, #dfe6d1 25% 100%);
+}
+.sw-traffic {
+  background:
+    linear-gradient(28deg, transparent 44%, #1db954 44% 50%, #f29900 50% 53%, #d93025 53% 56%, transparent 56%),
+    #e8eaed;
+}
+.sw-streetview {
+  background:
+    linear-gradient(118deg, transparent 46%, #4fc3f7 46% 54%, transparent 54%),
+    linear-gradient(28deg, transparent 46%, #4fc3f7 46% 54%, transparent 54%),
+    #e8eaed;
+}
+/* Light Google maps: the HUD readout needs its own backing to stay legible. */
+body[data-basemap="google"] .readout {
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(4, 8, 13, 0.62);
+  opacity: 1;
+}

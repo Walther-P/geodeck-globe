@@ -18,7 +18,8 @@
 | 公路影像目錄 | 高速公路局、公路局影像（座標與名稱來自 GeoDeck 0.7 的目錄快照，2026-09-20） | 打包；影像本身由主管機關伺服器提供 | 各主管機關 | 手動重建 |
 | 停車場影像關聯 | 人工核對（目前：冷水坑 1 號停車場入口） | 打包 `parking-cameras.json` | — | 90 天未複核自動停用 |
 | 地點搜尋、反查地名 | [Photon](https://photon.komoot.io)（OpenStreetMap） | 直連 | ODbL；公共伺服器合理使用 | — |
-| 地點搜尋（Google） | Google Places（Maps JavaScript API 的 Places 程式庫） | 站長金鑰（建置時注入）或使用者自己的金鑰，瀏覽器直接載入；不畫 Google 地圖 | Google Maps Platform 條款；費用由金鑰擁有者負擔 | 即時 |
+| 底圖（Google） | Google Map Tiles API 2D 圖磚（roadmap／satellite／terrain，layerTraffic、layerStreetview） | 站長金鑰或使用者自己的金鑰，瀏覽器直接讀；session 存在瀏覽器到過期前 1 天；不經本站轉送、不快取圖磚；顯示 Google 標誌與 viewport 版權字 | Google Maps Platform 條款；費用由金鑰擁有者負擔（每月 10 萬格免費） | 路況即時 |
+| 地點搜尋（Google） | Google Places（Maps JavaScript API 的 Places 程式庫） | 同上；只在 Google 底圖時使用 | Google Maps Platform 條款；費用由金鑰擁有者負擔 | 即時 |
 | 分享連結解析 | Google 地圖短網址（maps.app.goo.gl）→ 本站 `/api/resolve` 跟隨轉址，必要時讀頁面上的座標 | 只接受 Google 地圖網址、只跟隨 Google 網域，結果快取 1 天 | — | — |
 
 ## 公路影像目錄的處理
@@ -57,7 +58,8 @@ twipcam 轉載的靜態快照：只在有人點開那支鏡頭時才載入，標
 | OpenFreeMap TileJSON／字型 | 可 | 不需要 | 圖磚有 `name:zh-Hant` |
 | Google 地圖頁面（`/api/resolve` 讀座標） | — | Cloudflare 回 429 | 短網址轉到沒有座標的網址時，改用網址裡的店名＋地址搜尋 |
 | TDX（token 與資料） | **不可（CORS）** | Cloudflare 可 | 所以 TDX 一律經轉送（帶使用者自己的金鑰，不快取）；token、停車場、剩餘車位、CCTV、路邊路段、公車都已在正式網站實測 |
-| TDX 連續呼叫 | — | 約第 6 次後回 429 | 即使每次間隔 1.2 秒；App 把靜態清單快取 6 小時、呼叫排隊間隔 500 ms，遇 429 等 3 秒重試一次 |
+| TDX 連續呼叫 | — | 每分鐘第 6 次回 429 | 回應 `API rate limit exceeded`、`Retry-After` 約 20 秒（間隔 3 秒也一樣），所以是每分鐘額度；App 每分鐘最多 5 次、停車優先、靜態清單快取 6 小時 |
+| TDX 路邊停車 | — | 可 | `ParkingSegments`（`ParkingSegmentPosition` 為點）與 `CurbParkingSegmentAvailabilities`（每分鐘更新，有 `DataCollectTime`）；臺南、臺北已實測 |
 | 氣象署 | 可 | 可 | 特報、地震報告、颱風（欄位為大寫開頭，例如 `TropicalCyclones.TropicalCyclone`） |
 
 公路局、高公局影像用 `<img>` 顯示，不需要 CORS；它們的伺服器可能擋國外 IP，所以 CI 的直連結果不代表台灣使用者的情況。

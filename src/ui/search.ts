@@ -1,4 +1,5 @@
 import { googleAvailable, googleSearch } from "../data/google";
+import { googleMapActive } from "../map/basemap";
 import { extractUrl, resolveSharedPlace } from "../data/maplinks";
 import { googleSearchUrl, searchPlaces, type Place } from "../data/places";
 import { escapeHtml as esc, type Point } from "../lib/util";
@@ -9,9 +10,10 @@ export interface SearchDeps {
   map: GlobeMap;
   choose(p: Place): void;
   openSettings(section: string): void;
+  useGoogleMap(): Promise<void>;
 }
 
-export function setupSearch({ map, choose, openSettings }: SearchDeps): { runShared(text: string): Promise<void> } {
+export function setupSearch({ map, choose, openSettings, useGoogleMap }: SearchDeps): { runShared(text: string): Promise<void> } {
   const input = $<HTMLInputElement>("search");
   const box = $("searchResults");
   const clear = $("searchClear");
@@ -35,10 +37,15 @@ export function setupSearch({ map, choose, openSettings }: SearchDeps): { runSha
     box.classList.remove("hidden");
     box.innerHTML = html;
   };
+  // Google's terms: its place results go on a Google map, so Google search
+  // runs only while the Google map is showing.
+  const useGoogle = () => googleAvailable() && googleMapActive();
   const googleTip = () =>
-    googleAvailable()
+    useGoogle()
       ? ""
-      : `<button class="tip" data-action="google-key">想跟 Google 地圖找到一樣的店家？<small>到設定加入你自己的 Google 搜尋金鑰（選填）</small></button>`;
+      : googleAvailable()
+        ? `<button class="tip" data-action="google-map">想跟 Google 地圖找到一樣的店家？<small>點這裡換成 Google 地圖，搜尋也會改用 Google</small></button>`
+        : `<button class="tip" data-action="google-key">想跟 Google 地圖找到一樣的店家？<small>到設定加入 Google 金鑰（選填）</small></button>`;
 
   const render = (q: string, found: Place[], note = "") => {
     results = found;
@@ -81,7 +88,7 @@ export function setupSearch({ map, choose, openSettings }: SearchDeps): { runSha
     const mine = (controller = new AbortController());
     show(`<p>搜尋中…</p>`);
     try {
-      const r = await searchPlaces(q, near(), mine.signal, googleAvailable() ? googleSearch : undefined);
+      const r = await searchPlaces(q, near(), mine.signal, useGoogle() ? googleSearch : undefined);
       if (mine.signal.aborted) return;
       render(q, r.places, [note, r.googleError ? `Google 搜尋沒有結果：${r.googleError}` : ""].filter(Boolean).join(" "));
     } catch (e) {
@@ -113,6 +120,13 @@ export function setupSearch({ map, choose, openSettings }: SearchDeps): { runSha
     if (target.closest("[data-action='google-key']")) {
       close();
       openSettings("google");
+      return;
+    }
+    if (target.closest("[data-action='google-map']")) {
+      void useGoogleMap().then(() => {
+        const q = input.value.trim();
+        if (q.length >= 2 && !extractUrl(q)) void runQuery(q);
+      });
       return;
     }
     const b = target.closest<HTMLElement>("[data-i]");

@@ -6,6 +6,7 @@
 //
 // Optional, CI-only secrets for checking the keyed feeds (never shipped):
 //   PROBE_TDX_ID, PROBE_TDX_SECRET, PROBE_CWA_KEY
+// and PROBE_GOOGLE_KEY (the site's own browser key) for the Google map tiles.
 // Screenshots of the live app go to artifacts/live/.
 
 import { chromium } from "@playwright/test";
@@ -21,7 +22,7 @@ const page = await browser.newPage();
 // away mid-probe and fetches carry this site's origin like the app's do.
 await page.goto(new URL("icon.svg", base).toString());
 
-const keys = { tdxId: process.env.PROBE_TDX_ID ?? "", tdxSecret: process.env.PROBE_TDX_SECRET ?? "", cwa: process.env.PROBE_CWA_KEY ?? "" };
+const keys = { tdxId: process.env.PROBE_TDX_ID ?? "", tdxSecret: process.env.PROBE_TDX_SECRET ?? "", cwa: process.env.PROBE_CWA_KEY ?? "", google: process.env.PROBE_GOOGLE_KEY ?? "" };
 const results = await page.evaluate(async (keys) => {
   const rows = [];
   const now = Math.floor(Date.now() / 1000);
@@ -102,6 +103,37 @@ const results = await page.evaluate(async (keys) => {
       rows.push({ name, direct: "failed", relay: "-", note: String(e).slice(0, 120) });
     }
   }
+
+  // Google's logo must load wherever Google tiles are shown.
+  const logo = await new Promise((resolve) => {
+    const img = new Image();
+    const timer = setTimeout(() => resolve("timeout"), 10000);
+    img.onload = () => (clearTimeout(timer), resolve(`ok ${img.naturalWidth}×${img.naturalHeight}`));
+    img.onerror = () => (clearTimeout(timer), resolve("failed"));
+    img.src = "https://developers.google.com/static/maps/documentation/images/google_on_non_white.png";
+  });
+  rows.push({ name: "Google logo image", direct: logo.startsWith("ok") ? "ok" : logo, relay: "-", note: logo });
+
+  if (keys.google) {
+    const g = "https://tile.googleapis.com";
+    const row = { name: "Google Map Tiles (site key)", direct: "", relay: "-", note: "" };
+    try {
+      const r = await fetch(`${g}/v1/createSession?key=${encodeURIComponent(keys.google)}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mapType: "roadmap", language: "zh-TW", region: "TW", layerTypes: ["layerTraffic"] }) });
+      const d = await r.json();
+      row.direct = r.ok ? "ok" : `HTTP ${r.status}`;
+      if (!d.session) row.note = JSON.stringify(d).slice(0, 300);
+      else {
+        const q = `session=${encodeURIComponent(d.session)}&key=${encodeURIComponent(keys.google)}`;
+        const tile = await fetch(`${g}/v1/2dtiles/6/53/27?${q}`);
+        const v = await fetch(`${g}/tile/v1/viewport?${q}&zoom=6&north=26&south=21&east=123&west=118`).then((x) => x.json()).catch((e) => ({ error: String(e) }));
+        row.note = `session ok (expires ${new Date(Number(d.expiry) * 1000).toISOString().slice(0, 10)}, ${d.tileWidth}px); tile z6 HTTP ${tile.status} ${tile.headers.get("content-type")} ${(await tile.blob()).size} bytes; viewport ${JSON.stringify(v).slice(0, 120)}`;
+      }
+    } catch (e) {
+      row.direct = "blocked (CORS/network)";
+      row.note = String(e).slice(0, 160);
+    }
+    rows.push(row);
+  } else rows.push({ name: "Google Map Tiles", direct: "skipped", relay: "-", note: "no GOOGLE_MAPS_KEY secret" });
 
   if (keys.tdxId && keys.tdxSecret) {
     let token = "";

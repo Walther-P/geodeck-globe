@@ -1,10 +1,21 @@
 import { describe, expect, it } from "vitest";
 import { intensityRank, parseCyclones, parseQuakes, parseWarnings } from "../src/data/cwa";
 import { cloudLayer, flightQuery, latestDomainTime, parseAdsb, parseOpenSky, parseTle, parseUsgs, satPosition, settledTime } from "../src/data/sky";
-import { normalizeBuses, normalizeCctv, normalizeCurbs, normalizeLiveLots, segmentPoint } from "../src/data/tdx";
+import { budgetWait, normalizeBuses, normalizeCctv, normalizeCurbs, normalizeLiveLots, segmentPoint } from "../src/data/tdx";
 import { parseForecast, rainOutlook } from "../src/data/weather";
 
 const T0 = Date.parse("2026-10-18T08:00:00Z");
+
+describe("TDX call budget", () => {
+  it("allows five calls a minute, half a second apart, and honours Retry-After", () => {
+    expect(budgetWait(T0, [])).toBe(0);
+    expect(budgetWait(T0, [T0 - 200])).toBe(300);
+    const five = [T0 - 50000, T0 - 40000, T0 - 30000, T0 - 20000, T0 - 10000];
+    expect(budgetWait(T0, five)).toBe(10000);
+    expect(budgetWait(T0, [T0 - 70000, ...five.slice(1)])).toBe(0);
+    expect(budgetWait(T0, [], T0 + 20000)).toBe(20000);
+  });
+});
 
 describe("TDX parking", () => {
   const parks = {

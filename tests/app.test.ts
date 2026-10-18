@@ -1,3 +1,4 @@
+import { googleTileError, sessionSpec } from "../src/map/basemap";
 import { validateStyleMin } from "@maplibre/maplibre-gl-style-spec";
 import { describe, expect, it } from "vitest";
 import { isSameOriginRequest, matchRelayRule, RELAY_RULES } from "../worker/relay";
@@ -142,5 +143,25 @@ describe("basemap style", () => {
     expect(validateStyleMin(style as never)).toEqual([]);
     expect(style.projection).toEqual({ type: "globe" });
     expect(style.layers.find((l) => l.id === "land-fallback")).toBeTruthy();
+  });
+});
+
+describe("google basemap", () => {
+  it("bakes overlays into one tile session per choice", () => {
+    expect(sessionSpec({ base: "g-road", overlays: [] }, true)).toEqual({ language: "zh-TW", region: "TW", scale: "scaleFactor2x", highDpi: true, mapType: "roadmap" });
+    expect(sessionSpec({ base: "g-road", overlays: ["traffic", "streetview"] }, false)).toMatchObject({ mapType: "roadmap", layerTypes: ["layerTraffic", "layerStreetview"], scale: "scaleFactor1x" });
+    // Satellite with names = hybrid; terrain must carry the road layer.
+    expect(sessionSpec({ base: "g-sat", overlays: ["traffic"] }, true)).toMatchObject({ mapType: "satellite", layerTypes: ["layerRoadmap", "layerTraffic"] });
+    expect(sessionSpec({ base: "g-terrain", overlays: [] }, true)).toMatchObject({ mapType: "terrain", layerTypes: ["layerRoadmap"] });
+    const dark = sessionSpec({ base: "g-dark", overlays: [] }, true);
+    expect(dark.mapType).toBe("roadmap");
+    expect(Array.isArray(dark.styles)).toBe(true);
+    expect(sessionSpec({ base: "g-sat", overlays: [] }, true).styles).toBeUndefined();
+  });
+
+  it("explains why Google refused", () => {
+    expect(googleTileError(403, "Map Tiles API has not been used in project 123 before or it is disabled.")).toContain("Map Tiles API");
+    expect(googleTileError(403, "Requests from referer https://x.example/ are blocked.")).toContain("沒有允許這個網站");
+    expect(googleTileError(429, "")).toContain("用量");
   });
 });

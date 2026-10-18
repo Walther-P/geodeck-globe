@@ -41,16 +41,16 @@ export function openSettings(sheet: Sheet, toast: (t: string) => void, focus?: s
     <div class="actions"><button class="btn primary" id="saveCwa">儲存並測試氣象署</button></div>
     <p id="cwaResult" class="muted" role="status"></p>
 
-    <h2 id="google">Google 地點搜尋 ${hasGoogle() ? '<span class="ok">● 使用你的金鑰</span>' : siteGoogleKey() ? '<span class="ok">● 本站已提供</span>' : ""}</h2>
+    <h2 id="google">Google 地圖與搜尋 ${hasGoogle() ? '<span class="ok">● 使用你的金鑰</span>' : siteGoogleKey() ? '<span class="ok">● 本站已提供</span>' : ""}</h2>
     <p class="muted">${
       siteGoogleKey()
-        ? "本站已開啟 Google 地點搜尋，不用設定也能直接搜到和 Google 地圖一樣的店家。下面可以改用你自己的金鑰（選填）。"
-        : "沒有這把金鑰也能搜尋（用 OpenStreetMap），也能貼上 Google 地圖的分享連結。加上自己的 Google 金鑰後，打「某某餐廳」就能找到和 Google 地圖一樣的店家。"
+        ? "本站已提供 Google 地圖：右側「圖層」鈕可換成 Google 標準、深色、衛星、地形，加上路況與街景範圍；用 Google 地圖時搜尋也和 Google 一樣。不用設定，下面的個人金鑰是選填。"
+        : "沒有金鑰也能用百眼深色地圖和 OpenStreetMap 搜尋，也能貼上 Google 地圖的分享連結。加上 Google 金鑰後，地圖可換成 Google 地圖（含衛星、路況），打「某某餐廳」也能找到和 Google 地圖一樣的店家。"
     }</p>
     <ol class="steps">
-      <li>到 <a href="https://console.cloud.google.com/google/maps-apis/start" target="_blank" rel="noopener">Google Cloud 的 Maps Platform</a> 建立專案並啟用帳單（需要信用卡；Google 每月有免費用量，個人搜尋通常用不完）。</li>
-      <li>在「API 和服務 → 程式庫」啟用 <b>Maps JavaScript API</b> 和 <b>Places API (New)</b>。</li>
-      <li>「憑證 → 建立憑證 → API 金鑰」。編輯金鑰：應用程式限制選「網站」，加入 <code>${esc(location.origin)}/*</code>；API 限制只勾上面兩個。</li>
+      <li>到 <a href="https://console.cloud.google.com/google/maps-apis/start" target="_blank" rel="noopener">Google Cloud 的 Maps Platform</a> 建立專案並啟用帳單（需要信用卡；Google 每月有免費用量）。</li>
+      <li>在「API 和服務 → 程式庫」啟用 <b>Map Tiles API</b>、<b>Maps JavaScript API</b> 和 <b>Places API (New)</b>。</li>
+      <li>「憑證 → 建立憑證 → API 金鑰」。編輯金鑰：應用程式限制選「網站」，加入 <code>${esc(location.origin)}/*</code>；API 限制只勾上面三個。</li>
       <li>建議在「配額」把每日上限調低，就不會有意外費用。</li>
     </ol>
     <label class="field"><span>Google API 金鑰（目前：${esc(mask(k.google))}）</span><input id="googleKey" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(k.google)}"></label>
@@ -70,13 +70,13 @@ export function openSettings(sheet: Sheet, toast: (t: string) => void, focus?: s
     <p class="muted">iPhone：Safari 分享 → 加入主畫面。Android：瀏覽器選單 → 安裝應用程式。</p>
 
     <h2>資料來源</h2>
-    <p class="micro">底圖：OpenFreeMap／OpenMapTiles／© OpenStreetMap 貢獻者 · 陸地輪廓：Natural Earth<br>
+    <p class="micro">底圖：OpenFreeMap／OpenMapTiles／© OpenStreetMap 貢獻者 · 陸地輪廓：Natural Earth · Google 地圖模式：© Google<br>
     天氣與空氣：Open-Meteo（含 CAMS）· 雷達：RainViewer · 雲圖：NASA GIBS（向日葵／GOES）<br>
     地震：USGS、中央氣象署 · 颱風與特報：中央氣象署<br>
     航班：adsb.lol 社群接收（ODbL）· 衛星：CelesTrak 軌道根數 + SGP4<br>
     停車：© OpenStreetMap 貢獻者（ODbL）與臺北、新北、桃園、臺中、臺南開放資料；即時車位、公車、道路影像：TDX<br>
     測速點：內政部警政署開放資料 · 公路影像：交通部高速公路局、公路局<br>
-    搜尋：Photon（OpenStreetMap）；設定 Google 金鑰後加上 Google Places</p>
+    搜尋：Photon（OpenStreetMap）；Google 地圖模式加上 Google Places</p>
     <p class="micro">所有資料都可能延遲、不完整或錯誤，不可作為緊急應變或行車安全的唯一依據。</p>
 
     <h2>關於</h2>
