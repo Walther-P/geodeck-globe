@@ -175,7 +175,7 @@ const shots = [
   { name: "phone-taiwan-sky", w: 393, h: 852, view: { lng: 121, lat: 23.8, zoom: 6.6 }, lenses: ["weather", "sky"], tap: "now" },
   { name: "phone-tainan-parking", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15.6 }, lenses: ["traffic", "parking"], healthy: true, tdx: true },
   { name: "phone-tainan-traffic", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15.2 }, lenses: ["parking", "traffic"], healthy: true },
-  { name: "phone-locate", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15 }, lenses: ["parking"], locate: true },
+  { name: "phone-locate", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15 }, lenses: ["parking"], locate: true, pinchUi: true },
   {
     name: "phone-shared-link",
     w: 393,
@@ -319,6 +319,20 @@ for (const s of shots) {
   if (s.share) {
     const title = (await page.textContent("#sheetTitle").catch(() => "")) ?? "";
     if (title !== "赤崁樓") errors.push(`${s.name}: shared link opened "${title}"`);
+  }
+  if (s.pinchUi) {
+    // A two-finger pinch on the interface must not zoom the whole page.
+    const cdp = await ctx.newCDPSession(page);
+    for (const sel of [".dock", ".search"]) {
+      const b = await page.locator(sel).boundingBox();
+      const at = (d) => [{ x: b.x + b.width / 2 - d, y: b.y + b.height / 2, id: 0 }, { x: b.x + b.width / 2 + d, y: b.y + b.height / 2, id: 1 }];
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: at(15) });
+      for (let k = 1; k <= 15; k++) await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: at(15 + k * 8) });
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      await page.waitForTimeout(500);
+      const scale = await page.evaluate(() => visualViewport.scale);
+      if (scale !== 1) errors.push(`${s.name}: pinching ${sel} zoomed the page to ${scale.toFixed(2)}×`);
+    }
   }
   await ctx.close();
 }

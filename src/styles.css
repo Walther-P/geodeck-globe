@@ -27,6 +27,8 @@
 * {
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
+  /* Pinch and double-tap zoom the map, never the page; MapLibre's own rules on the canvas win. */
+  touch-action: pan-x pan-y;
 }
 
 html,

@@ -48,6 +48,8 @@
    （Google 條款不允許把 Google 內容放在非 Google 地圖上），所以百眼深色時搜尋改用 OpenStreetMap。
 5. **手機優先**：改介面後跑 `npm run screenshots`，看 393×852 直向與 852×393 橫向，按鈕不能互相遮住。
    觸控目標至少 40px；輸入框字級 16px（避免 iOS 放大）。
+   整頁不能被放大：雙指縮放和連點只作用在地圖（viewport `user-scalable=no`、全域 `touch-action: pan-x pan-y`、
+   擋 iOS 的 `gesturestart`）；`phone-locate` 截圖會在介面上雙指放大，頁面放大就算失敗。
 6. **效能**：手機上不要每格重建大量圖層；資料更新用 `setData`。Starlink 這類數千點的圖層要降頻。
 7. **安全**：來自資料來源的字串一律 `escapeHtml`；網址一律經過 `safeUrl`。
 8. 打包的資料（`public/data/`）要能用 `scripts/` 裡的腳本重建，並保留授權檔（停車目錄含 ODbL 資料）。

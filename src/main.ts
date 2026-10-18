@@ -43,6 +43,11 @@ const map = createGlobe($("map"), () => toast("地圖底圖連線失敗，暫時
 const basemap = new Basemap(map, toast);
 const pin = new DropPin(map, (p) => showPlace(p));
 
+// iOS ignores user-scalable=no: a pinch that starts on the interface or a
+// marker would zoom the whole page. Its gesture events drive that zoom; the
+// map pinches with touch events, so it keeps working.
+for (const type of ["gesturestart", "gesturechange"]) document.addEventListener(type, (e) => e.preventDefault(), { passive: false });
+
 // ---- Lenses -----------------------------------------------------------------
 
 const taps: Array<{ layers: string[]; handler: (f: MapGeoJSONFeature) => void }> = [];
