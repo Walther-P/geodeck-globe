@@ -1,9 +1,6 @@
-// 天空：aircraft, satellites, earthquakes, launches; tap a plane or satellite
+// 天空：aircraft, satellites, launches; tap a plane or satellite
 // to lock the camera onto it (see ui/track.ts).
 
-import type { MapGeoJSONFeature } from "maplibre-gl";
-import { hasCwa } from "../data/keys";
-import { quakes as cwaQuakes } from "../data/cwa";
 import { countdown, upcomingLaunches, type Launch } from "../data/launches";
 import { passIcs, satLabel, upcomingPasses, type Pass } from "../data/passes";
 import {
@@ -15,9 +12,7 @@ import {
   satellites,
   satMotion,
   satPosition,
-  usgsQuakes,
   type Aircraft,
-  type Quake,
   type Satellite,
   type SatPosition,
 } from "../data/sky";
@@ -29,9 +24,6 @@ import { Tracker, type Trackable } from "../ui/track";
 import { every, type AppContext, type Chip, type Lens } from "./lens";
 
 const LAYERS = [
-  "sky-quake-glow",
-  "sky-quake",
-  "sky-quake-label",
   "sky-track",
   "sky-starlink",
   "sky-sat",
@@ -52,7 +44,7 @@ type Sat = Satellite & { station?: boolean };
 export class SkyLens implements Lens {
   id = "sky" as const;
   title = "天空";
-  private on = { planes: true, sats: true, starlink: false, quakes: true, launches: true };
+  private on = { planes: true, sats: true, starlink: false, launches: true };
   private stops: Array<() => void> = [];
   private planes: Aircraft[] = [];
   private planesAt = 0;
@@ -67,10 +59,9 @@ export class SkyLens implements Lens {
   private satNow: SatPosition[] = [];
   /** Satellite whose next orbit is drawn as a dashed ground track. */
   private orbitOf: Satellite | null = null;
-  private quakeRows: Quake[] = [];
   private launches: Launch[] = [];
   private pending: { kind: "plane" | "sat"; id: string; until: number } | null = null;
-  private notes = { planes: "", sats: "", quakes: "" };
+  private notes = { planes: "", sats: "" };
   private active = false;
   private moveTimer = 0;
   private tickCount = 0;
@@ -95,7 +86,6 @@ export class SkyLens implements Lens {
       const s = this.findSat(String(f.properties.id));
       if (s) this.trackSat(s);
     });
-    ctx.onFeatureTap(["sky-quake"], (f) => this.showQuake(f));
     ctx.onFeatureTap(["sky-launch"], (f) => {
       const l = this.launches.find((x) => x.id === f.properties.id);
       if (l) this.launchSheet(l);
@@ -107,7 +97,6 @@ export class SkyLens implements Lens {
       { id: "planes", label: "航班", on: this.on.planes },
       { id: "sats", label: "衛星", on: this.on.sats },
       { id: "starlink", label: "Starlink", on: this.on.starlink },
-      { id: "quakes", label: "地震", on: this.on.quakes },
       { id: "launches", label: "發射", on: this.on.launches },
     ];
   }
@@ -118,7 +107,6 @@ export class SkyLens implements Lens {
     if (!this.active) return;
     if (key === "planes") this.on.planes ? void this.loadPlanes() : setData(this.ctx.map, "sky-planes", EMPTY);
     if (key === "sats" || key === "starlink") void this.loadSats();
-    if (key === "quakes") this.on.quakes ? void this.loadQuakes() : setData(this.ctx.map, "sky-quakes", EMPTY);
     if (key === "launches") this.on.launches ? void this.loadLaunches() : setData(this.ctx.map, "sky-launches", EMPTY);
     this.report();
   }
@@ -132,40 +120,8 @@ export class SkyLens implements Lens {
   activate(): void {
     this.active = true;
     const map = this.ctx.map;
-    for (const id of ["sky-planes", "sky-sats", "sky-starlink", "sky-track", "sky-quakes", "sky-launches"]) setData(map, id, EMPTY);
+    for (const id of ["sky-planes", "sky-sats", "sky-starlink", "sky-track", "sky-launches"]) setData(map, id, EMPTY);
     addLayers(map, [
-      {
-        id: "sky-quake-glow",
-        type: "circle",
-        source: "sky-quakes",
-        filter: ["<", ["get", "ageH"], 3],
-        paint: {
-          "circle-radius": ["interpolate", ["linear"], ["coalesce", ["get", "mag"], 3], 2.5, 10, 7, 46],
-          "circle-color": "#f87171",
-          "circle-opacity": 0.18,
-          "circle-blur": 0.6,
-        },
-      },
-      {
-        id: "sky-quake",
-        type: "circle",
-        source: "sky-quakes",
-        paint: {
-          "circle-radius": ["interpolate", ["linear"], ["coalesce", ["get", "mag"], 3], 2.5, 3, 5, 7, 7, 15],
-          "circle-color": "rgba(0,0,0,0)",
-          "circle-stroke-width": 1.6,
-          "circle-stroke-color": ["interpolate", ["linear"], ["get", "ageH"], 0, "#f87171", 12, "#fbbf24", 48, "#6b7280"],
-        },
-      },
-      {
-        id: "sky-quake-label",
-        type: "symbol",
-        source: "sky-quakes",
-        minzoom: 4,
-        filter: [">=", ["coalesce", ["get", "mag"], 0], 4],
-        layout: { "text-field": ["concat", "M", ["to-string", ["get", "mag"]]], "text-font": ["Noto Sans Bold"], "text-size": 11, "text-offset": [0, 1.4] },
-        paint: { "text-color": "#fca5a5", "text-halo-color": "#04080d", "text-halo-width": 1.2 },
-      },
       {
         id: "sky-track",
         type: "line",
@@ -240,11 +196,9 @@ export class SkyLens implements Lens {
     map.on("moveend", this.onMove);
     void this.loadPlanes();
     void this.loadSats();
-    void this.loadQuakes();
     void this.loadLaunches();
     this.stops.push(every(PLANES_EVERY_MS, () => void this.loadPlanes()));
     this.stops.push(every(1000, () => this.tick()));
-    this.stops.push(every(120000, () => void this.loadQuakes()));
   }
 
   deactivate(): void {
@@ -288,7 +242,7 @@ export class SkyLens implements Lens {
   }
 
   private report(): void {
-    const parts = [this.on.planes && this.notes.planes, this.on.sats && this.notes.sats, this.on.quakes && this.notes.quakes].filter(Boolean);
+    const parts = [this.on.planes && this.notes.planes, this.on.sats && this.notes.sats].filter(Boolean);
     this.ctx.status("sky", parts.join(" · ") || "選擇要顯示的項目");
   }
 
@@ -667,57 +621,6 @@ export class SkyLens implements Lens {
       <p class="micro">資料：The Space Devs Launch Library 2。發射時間常會延後。</p>
       ${link ? `<div class="actions"><a class="btn" href="${esc(link)}" target="_blank" rel="noopener">直播／影片</a></div>` : ""}`,
     );
-  }
-
-  // ---- Earthquakes --------------------------------------------------------
-
-  private async loadQuakes(): Promise<void> {
-    if (!this.active || !this.on.quakes) return;
-    const [usgs, cwa] = await Promise.allSettled([usgsQuakes(), hasCwa() ? cwaQuakes() : Promise.resolve([])]);
-    const rows: Quake[] = [];
-    if (cwa.status === "fulfilled")
-      for (const q of cwa.value)
-        rows.push({ id: `cwa-${q.id}`, lat: q.lat, lng: q.lng, magnitude: q.magnitude, depthKm: q.depthKm, time: q.time, place: q.location, url: q.web, source: "氣象署" });
-    if (usgs.status === "fulfilled")
-      for (const q of usgs.value) {
-        // CWA reports win for Taiwan; drop the USGS copy of the same event.
-        const dup = rows.some((c) => c.source === "氣象署" && Math.abs((c.time ?? 0) - (q.time ?? 0)) < 120000 && distance(c, q) < 80000);
-        if (!dup) rows.push(q);
-      }
-    this.quakeRows = rows;
-    const now = Date.now();
-    setData(
-      this.ctx.map,
-      "sky-quakes",
-      points(rows, (q) => ({ id: q.id, mag: q.magnitude === null ? null : Math.round(q.magnitude * 10) / 10, ageH: q.time === null ? 99 : (now - q.time) / 3600000 })),
-    );
-    const failed = [usgs.status === "rejected" && "USGS", hasCwa() && cwa.status === "rejected" && "氣象署"].filter(Boolean);
-    this.notes.quakes = `地震 ${rows.length} 筆（24 小時 M2.5+${hasCwa() ? "＋氣象署報告" : ""}）${failed.length ? `；${failed.join("、")}暫時無法取得` : ""}`;
-    this.report();
-  }
-
-  private showQuake(f: MapGeoJSONFeature): void {
-    const q = this.quakeRows.find((x) => x.id === f.properties.id);
-    if (!q) return;
-    const link = safeUrl(q.url);
-    this.ctx.sheet.open(
-      "quake",
-      q.source === "氣象署" ? "CWA EARTHQUAKE" : "USGS EARTHQUAKE",
-      `規模 ${q.magnitude ?? "?"} 地震`,
-      `<div class="stat-row">
-        <div class="stat"><b>${q.magnitude ?? "—"}</b><small>規模</small></div>
-        <div class="stat"><b>${q.depthKm === null ? "—" : Math.round(q.depthKm)}</b><small>深度 km</small></div>
-        <div class="stat"><b>${esc(ago(q.time))}</b><small>${q.time ? esc(dateTime(q.time)) : "時間未知"}</small></div>
-      </div>
-      <p>${esc(q.place)}</p>
-      <p class="micro">資料：${q.source}${q.source === "USGS" ? "（全球自動定位，規模可能與氣象署不同）" : ""}</p>
-      ${link ? `<div class="actions"><a class="btn" href="${esc(link)}" target="_blank" rel="noopener">完整報告</a></div>` : ""}`,
-    );
-  }
-
-  /** Latest quakes for the "now" bar. */
-  recentQuakes(): Quake[] {
-    return this.quakeRows;
   }
 }
 

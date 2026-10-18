@@ -83,6 +83,9 @@ const results = await page.evaluate(async (keys) => {
   await probe("adsb.fi point", "https://opendata.adsb.fi/api/v2/lat/23.5/lon/121/dist/150", acCount);
   await probe("adsb.one point", "https://api.adsb.one/v2/point/23.5/121/150", acCount);
   await probe("OpenSky states", "https://opensky-network.org/api/states/all?lamin=21&lamax=26&lomin=118&lomax=124", (d) => `${(d.states ?? []).length} aircraft`);
+  await probe("Open-Meteo wind grid", "https://api.open-meteo.com/v1/forecast?latitude=23,24,25&longitude=120,121,122&current=wind_speed_10m,wind_direction_10m&wind_speed_unit=ms&timeformat=unixtime", (d) => `${Array.isArray(d) ? d.length : "not an array"} points; first ${JSON.stringify(d[0]?.current ?? {})}`);
+  // Within 200 km of Taipei: every result should be Taiwanese if geo search works.
+  await probe("Radio Browser near Taipei", "https://de1.api.radio-browser.info/json/stations/search?has_geo_info=true&is_https=true&hidebroken=true&order=clickcount&reverse=true&limit=8&geo_lat=25.03&geo_long=121.56&geo_distance=200000", (d) => `${d.length} stations; countries ${[...new Set(d.map((x) => x.countrycode))].join(",")}; ${d.map((x) => x.name).join(" / ").slice(0, 120)}`);
   await probe("Launch Library 2", "https://ll.thespacedevs.com/2.3.0/launches/upcoming/?limit=3&mode=normal", (d) => `${must(d.results, "results").length} launches; next ${d.results[0]?.name ?? "?"} at ${d.results[0]?.net ?? "?"}; pad ${d.results[0]?.pad?.latitude ?? "?"},${d.results[0]?.pad?.longitude ?? "?"}`);
   await probe("CelesTrak visual", "https://celestrak.org/NORAD/elements/gp.php?GROUP=visual&FORMAT=tle", (t) => `${String(t).split("\n").filter((l) => l.startsWith("1 ")).length} element sets`);
   await probe("Photon search", "https://photon.komoot.io/api/?q=%E8%B5%A4%E5%B4%81%E6%A8%93&limit=3&lat=23&lon=120.2", (d) => must(d.features, "features").map((f) => f.properties?.name).join(" / "));

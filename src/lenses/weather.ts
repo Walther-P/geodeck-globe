@@ -1,20 +1,24 @@
-// 天氣：radar loop, satellite clouds, typhoon tracks and CWA warnings.
+// 天氣：radar loop, satellite clouds, wind particles, typhoon tracks, CWA
+// warnings and earthquakes.
 
 import type { MapGeoJSONFeature, RasterLayerSpecification } from "maplibre-gl";
 import { cyclones, warnings, type Cyclone, type Warning } from "../data/cwa";
 import { hasCwa } from "../data/keys";
 import { cloudLayer, cloudTiles, cloudTime, radarFrames, type RadarFrame } from "../data/sky";
+import { windGrid, type GridBox, type WindGrid } from "../data/wind";
 import { ago, clock, dateTime } from "../lib/time";
 import { circlePolygon, escapeHtml as esc } from "../lib/util";
 import { EMPTY, addLayers, hideLayers, setData } from "../map/globe";
+import { WindLayer } from "../ui/wind";
 import { every, type AppContext, type Chip, type Lens } from "./lens";
+import { QuakeOverlay } from "./quakes";
 
 const FIRST_LABEL = "place-minor";
 
 export class WeatherLens implements Lens {
   id = "weather" as const;
   title = "天氣";
-  private on = { radar: true, clouds: false, typhoon: true, warnings: true };
+  private on = { radar: true, clouds: false, wind: false, typhoon: true, warnings: true, quakes: true };
   private frames: RadarFrame[] = [];
   private frame = -1;
   private playing = 0;
@@ -23,21 +27,33 @@ export class WeatherLens implements Lens {
   private cloudId = "";
   private storms: Cyclone[] = [];
   private alerts: Warning[] = [];
-  private notes = { radar: "", clouds: "", typhoon: "", warnings: "" };
+  private notes = { radar: "", clouds: "", wind: "", typhoon: "", warnings: "" };
+  private quakes: QuakeOverlay;
+  private wind: WindLayer;
+  private windData: WindGrid | null = null;
+  private windTimer = 0;
   private onMove = () => {
     if (this.on.clouds && cloudLayer(this.ctx.map.getCenter().lng) !== this.cloudId) void this.loadClouds();
+    if (this.on.wind) {
+      clearTimeout(this.windTimer);
+      this.windTimer = window.setTimeout(() => void this.loadWind(), 700);
+    }
   };
 
   constructor(private ctx: AppContext) {
     ctx.onFeatureTap(["wx-storm-point", "wx-storm-line"], (f) => this.showStorm(f));
+    this.quakes = new QuakeOverlay(ctx);
+    this.wind = new WindLayer(ctx.map);
   }
 
   chips(): Chip[] {
     return [
       { id: "radar", label: "雷達", on: this.on.radar },
       { id: "clouds", label: "雲圖", on: this.on.clouds },
+      { id: "wind", label: "風場", on: this.on.wind },
       { id: "typhoon", label: "颱風", on: this.on.typhoon, needs: "cwa" },
       { id: "warnings", label: `特報${this.alerts.length ? ` ${this.alerts.length}` : ""}`, on: this.on.warnings, needs: "cwa" },
+      { id: "quakes", label: "地震", on: this.on.quakes },
     ];
   }
 
@@ -57,6 +73,8 @@ export class WeatherLens implements Lens {
     if (key === "clouds") this.on.clouds ? void this.loadClouds() : hideLayers(this.ctx.map, ["wx-clouds"]);
     if (key === "typhoon") this.on.typhoon ? void this.loadStorms() : hideLayers(this.ctx.map, ["wx-storm-radius", "wx-storm-line", "wx-storm-point"]);
     if (key === "warnings" && this.on.warnings) void this.loadWarnings();
+    if (key === "wind") this.on.wind ? void this.loadWind(true) : (this.wind.hide(), (this.windData = null));
+    if (key === "quakes") this.on.quakes ? (this.quakes.draw(), void this.loadQuakes()) : this.quakes.hide();
     this.report();
   }
 
@@ -72,7 +90,14 @@ export class WeatherLens implements Lens {
       this.notes.typhoon = "";
       this.notes.warnings = "颱風與特報需要氣象署授權碼";
     }
+    if (this.on.wind) void this.loadWind(true);
+    if (this.on.quakes) {
+      this.quakes.draw();
+      void this.loadQuakes();
+    }
     this.stops.push(every(5 * 60000, () => void this.loadRadar()));
+    this.stops.push(every(120000, () => void this.loadQuakes()));
+    this.stops.push(every(30 * 60000, () => void this.loadWind(true)));
     this.stops.push(every(15 * 60000, () => (hasCwa() ? (void this.loadStorms(), void this.loadWarnings()) : undefined)));
     this.report();
   }
@@ -85,14 +110,19 @@ export class WeatherLens implements Lens {
     this.stops = [];
     this.hideRadar();
     hideLayers(this.ctx.map, ["wx-clouds", "wx-storm-radius", "wx-storm-line", "wx-storm-point"]);
+    this.quakes.hide();
+    this.wind.hide();
+    this.windData = null;
   }
 
   private report(): void {
     const parts = [
       this.on.radar && this.notes.radar,
       this.on.clouds && this.notes.clouds,
+      this.on.wind && this.notes.wind,
       this.on.typhoon && this.notes.typhoon,
       this.on.warnings && this.notes.warnings,
+      this.on.quakes && this.quakes.note,
     ].filter(Boolean);
     this.ctx.status("weather", parts.join(" · ") || "選擇要顯示的項目", this.alerts.length ? "warn" : undefined);
     this.ctx.refreshStrip("weather");
@@ -170,13 +200,18 @@ export class WeatherLens implements Lens {
   }
 
   renderExtra(el: HTMLElement): void {
+    if (this.on.wind)
+      el.insertAdjacentHTML(
+        "beforeend",
+        `<p class="legend wind-legend">風速 m/s <b style="color:#7dd3fc">&lt;3</b><b style="color:#5eead4">3–7</b><b style="color:#fbbf24">7–12</b><b style="color:#f97316">12–18</b><b style="color:#f87171">18+</b></p>`,
+      );
     if (!this.on.radar || !this.frames.length) return;
     const last = this.frames.length - 1;
-    el.innerHTML = `<div class="timeline">
+    el.insertAdjacentHTML("afterbegin", `<div class="timeline">
       <button class="play" id="radarPlay" aria-label="${this.playing ? "暫停" : "播放雷達回波"}">${this.playing ? "❚❚" : "▶"}</button>
       <input id="radarRange" type="range" min="0" max="${last}" value="${Math.max(0, this.frame)}" aria-label="雷達時間">
       <time id="radarTime">${this.frame >= 0 ? clock(this.frames[this.frame].time) : ""}</time>
-    </div>`;
+    </div>`);
     el.querySelector("#radarPlay")!.addEventListener("click", () => {
       if (this.playing) this.pause();
       else this.play();
@@ -186,6 +221,55 @@ export class WeatherLens implements Lens {
       this.pause();
       this.show(Number((e.target as HTMLInputElement).value));
     });
+  }
+
+  // ---- Wind ---------------------------------------------------------------
+
+  /** The view (plus a margin), or the whole globe when zoomed out. */
+  private windBox(): { box: GridBox; nx: number; ny: number } {
+    const map = this.ctx.map;
+    if (map.getZoom() < 3.5) return { box: { west: -180, east: 180, south: -66, north: 72 }, nx: 20, ny: 10 };
+    const b = map.getBounds();
+    const padX = (b.getEast() - b.getWest()) * 0.2;
+    const padY = (b.getNorth() - b.getSouth()) * 0.2;
+    const portrait = map.getContainer().clientHeight > map.getContainer().clientWidth;
+    return {
+      box: { west: b.getWest() - padX, east: b.getEast() + padX, south: Math.max(-80, b.getSouth() - padY), north: Math.min(80, b.getNorth() + padY) },
+      nx: portrait ? 9 : 13,
+      ny: portrait ? 13 : 9,
+    };
+  }
+
+  /** Re-asks only when the view has left the grid we have (or on a forced refresh). */
+  private async loadWind(force = false): Promise<void> {
+    if (!this.active || !this.on.wind) return;
+    const map = this.ctx.map;
+    const { box, nx, ny } = this.windBox();
+    const have = this.windData;
+    if (!force && have) {
+      const b = map.getBounds();
+      const inside = b.getWest() >= have.west && b.getEast() <= have.east && b.getSouth() >= have.south && b.getNorth() <= have.north;
+      const span = (have.east - have.west) / (box.east - box.west);
+      if (inside && span < 3) return;
+    }
+    try {
+      const grid = await windGrid(box, nx, ny);
+      if (!this.active || !this.on.wind) return;
+      this.windData = grid;
+      this.wind.show(grid);
+      this.notes.wind = `風場 ${grid.time ? clock(grid.time) : "現在"}，最大 ${Math.round(grid.maxSpeed)} m/s（Open-Meteo 模式）`;
+    } catch (e) {
+      this.notes.wind = `風場暫時無法取得：${(e as Error).message}`;
+    }
+    this.report();
+  }
+
+  // ---- Earthquakes --------------------------------------------------------
+
+  private async loadQuakes(): Promise<void> {
+    if (!this.active || !this.on.quakes) return;
+    await this.quakes.load();
+    this.report();
   }
 
   // ---- Clouds -------------------------------------------------------------

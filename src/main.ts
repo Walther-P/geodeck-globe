@@ -3,6 +3,7 @@ import type { MapGeoJSONFeature } from "maplibre-gl";
 import { hasCwa, hasTdx, onKeysChange } from "./data/keys";
 import type { Place } from "./data/places";
 import { ParkingLens } from "./lenses/parking";
+import { RadioLens } from "./lenses/radio";
 import { SkyLens } from "./lenses/sky";
 import { TrafficLens } from "./lenses/traffic";
 import { WeatherLens } from "./lenses/weather";
@@ -15,6 +16,7 @@ import { DetectOverlay } from "./ui/detect";
 import { $, Sheet, toast } from "./ui/dom";
 import { NowBar } from "./ui/now";
 import { openLayers } from "./ui/layers";
+import { DropPin } from "./ui/pin";
 import { openPlace } from "./ui/place";
 import { openSaved } from "./ui/saved";
 import { Locator } from "./ui/locate";
@@ -39,6 +41,7 @@ if (sharedView) {
 const sheet = new Sheet();
 const map = createGlobe($("map"), () => toast("地圖底圖連線失敗，暫時只顯示陸地輪廓；其他資訊仍可使用", 6000));
 const basemap = new Basemap(map, toast);
+const pin = new DropPin(map, (p) => showPlace(p));
 
 // ---- Lenses -----------------------------------------------------------------
 
@@ -80,6 +83,7 @@ const lenses: Record<LensId, Lens> = {
   traffic,
   parking: new ParkingLens(ctx),
   sky,
+  radio: new RadioLens(ctx),
 };
 if (sharedView?.track) sky.trackWhenSeen(sharedView.track.kind, sharedView.track.id);
 const active = new Set<LensId>();
@@ -170,6 +174,8 @@ map.on("load", () => {
 map.on("styleimagemissing", () => addIcons(map));
 
 map.on("click", (e) => {
+  // Taps on the pin or the car marker are theirs, not the map's.
+  if ((e.originalEvent?.target as Element | null)?.closest?.(".drop-pin, .car-pin")) return;
   for (const { layers, handler } of taps) {
     const existing = layers.filter((l) => map.getLayer(l) && map.getLayoutProperty(l, "visibility") !== "none");
     if (!existing.length) continue;
@@ -190,10 +196,12 @@ map.on("click", (e) => {
     sheet.close();
     return;
   }
-  showPlace({ lat: e.lngLat.lat, lng: e.lngLat.lng, title: "" });
+  // A pin first, so it is clear which spot was picked; its callout opens the card.
+  pin.drop({ lat: e.lngLat.lat, lng: e.lngLat.lng, title: "" });
 });
 
 function showPlace(p: Place, intent?: "navigate" | "walk"): void {
+  pin.drop(p, { collapsed: true });
   openPlace(
     {
       map,

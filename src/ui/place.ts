@@ -210,7 +210,7 @@ async function nearby(deps: PlaceDeps, p: Point, body: HTMLElement, current: () 
   });
 }
 
-async function reverseName(p: Point): Promise<string | null> {
+export async function reverseName(p: Point): Promise<string | null> {
   try {
     const d = await getJson<{ features?: Array<{ properties?: Record<string, string> }> }>(
       `https://photon.komoot.io/reverse?lat=${p.lat.toFixed(5)}&lon=${p.lng.toFixed(5)}&limit=1`,

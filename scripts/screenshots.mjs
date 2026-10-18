@@ -60,8 +60,7 @@ const epoch = `${String(new Date().getUTCFullYear()).slice(2)}${String(day.toFix
 const tle = (name, id, inc, raan, ma, mm) =>
   `${name}\n1 ${id}U 98067A   ${epoch}  .00016717  00000-0  10270-3 0  9005\n2 ${id} ${inc.padStart(8)} ${raan.padStart(8)} 0006703 130.5360 ${ma.padStart(8)} ${mm}563537\n`;
 
-const fixtures = {
-  "api.open-meteo.com": () => ({
+const openMeteo = () => ({
     utc_offset_seconds: 28800,
     current: { time: sec, temperature_2m: 27.4, apparent_temperature: 30.1, relative_humidity_2m: 78, weather_code: 2, wind_speed_10m: 11, is_day: 1 },
     minutely_15: { time: quarter, precipitation: [0, 0, 0, 0.2, 0.6, 1.1, 0.8, 0.3, 0, 0, 0, 0] },
@@ -72,7 +71,33 @@ const fixtures = {
       precipitation: hourly.map((_, i) => [0, 0, 1.2, 2.4, 0.4, 0, 0, 0][i % 8]),
       weather_code: hourly.map((_, i) => [2, 3, 61, 63, 61, 3, 2, 1][i % 8]),
     },
-  }),
+  });
+
+/** Many points in one request is the wind grid: a north-east monsoon, stronger in the strait. */
+function windRows(url) {
+  const q = new URL(url).searchParams;
+  const lngs = q.get("longitude").split(",").map(Number);
+  return q.get("latitude").split(",").map((lat, i) => ({ current: { time: sec, wind_speed_10m: 4 + Math.abs(Math.sin(Number(lat) / 2 + lngs[i] / 3)) * 12, wind_direction_10m: 35 + 25 * Math.sin(lngs[i]) } }));
+}
+
+function radio(url) {
+  if (new URL(url).pathname.startsWith("/json/url/")) return { ok: true };
+  const st = (id, name, cc, country, lat, lng, clicks) => ({ stationuuid: id, name, url_resolved: `https://stream.example/${id}.mp3`, homepage: "https://radio.example/", favicon: "", country, countrycode: cc, state: "", language: "chinese", tags: "news,talk", codec: "MP3", bitrate: 128, geo_lat: lat, geo_long: lng, clickcount: clicks, hls: 0, lastcheckok: 1 });
+  return [
+    st("r1", "台北之音", "TW", "Taiwan", 25.04, 121.53, 900),
+    st("r2", "台南知音廣播", "TW", "Taiwan", 22.99, 120.21, 500),
+    st("r3", "高雄港都電台", "TW", "Taiwan", 22.62, 120.3, 420),
+    st("r4", "BBC World Service", "GB", "United Kingdom", 51.5, -0.12, 9000),
+    st("r5", "NHK Radio 1", "JP", "Japan", 35.68, 139.69, 4000),
+    { ...st("r6", "http only", "TW", "Taiwan", 24.1, 120.6, 10), url_resolved: "http://insecure.example/x.mp3" },
+  ];
+}
+
+const fixtures = {
+  "api.open-meteo.com": (url) => ((new URL(url).searchParams.get("latitude") ?? "").includes(",") ? windRows(url) : openMeteo()),
+  "de1.api.radio-browser.info": (url) => radio(url),
+  "fi1.api.radio-browser.info": (url) => radio(url),
+  "de2.api.radio-browser.info": (url) => radio(url),
   "air-quality-api.open-meteo.com": () => ({ current: { us_aqi: 42, pm2_5: 9.8 } }),
   "api.rainviewer.com": () => ({ host: "https://tilecache.rainviewer.com", radar: { past: [...Array(6)].map((_, i) => ({ time: sec - (5 - i) * 600, path: `/v2/radar/${sec - (5 - i) * 600}` })) } }),
   "earthquake.usgs.gov": () => ({
@@ -159,7 +184,10 @@ const shots = [
     lenses: ["parking"],
     share: "https://www.google.com/maps/place/%E8%B5%A4%E5%B4%81%E6%A8%93/@22.997,120.2,17z/data=!3m1!4b1!4m6!3m5!1s0x1:0x2!8m2!3d22.997534!4d120.202568",
   },
+  { name: "phone-pin", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 14 }, lenses: ["weather"], click: true, pinOnly: true },
   { name: "phone-place-card", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 14 }, lenses: ["weather"], click: true },
+  { name: "phone-wind", w: 393, h: 852, view: { lng: 121, lat: 23.6, zoom: 6.2 }, lenses: ["weather"], chip: "wind", expect: /風場 .*m\/s/ },
+  { name: "phone-radio", w: 393, h: 852, view: { lng: 121, lat: 23.8, zoom: 6.6 }, lenses: ["radio"], expect: /電台 [1-9]\d* 台/ },
   { name: "phone-settings", w: 393, h: 852, view: { lng: 121, lat: 23.6, zoom: 6 }, lenses: [], settings: true },
   { name: "phone-google-map", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15.4 }, lenses: ["parking"], google: true, layers: true },
   { name: "phone-google-parking", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15.4 }, lenses: ["parking"], google: true, healthy: true },
@@ -209,7 +237,15 @@ for (const s of shots) {
   await page.goto(base + (s.query ?? ""));
   await page.waitForTimeout(4500);
   if (s.tap) await page.click("#now");
-  if (s.click) await page.mouse.click(s.w / 2, s.h / 2 - 60);
+  if (s.click) {
+    // A tap drops a pin; its callout opens the place card.
+    await page.mouse.click(s.w / 2, s.h / 2 - 60);
+    await page.waitForTimeout(700);
+    if (!(await page.$(".drop-pin .pin-callout"))) errors.push(`${s.name}: no pin after tapping the map`);
+    if (await page.evaluate(() => !!document.body.dataset.sheet)) errors.push(`${s.name}: a card opened before the pin was tapped`);
+    if (!s.pinOnly) await page.click(".drop-pin .pin-callout");
+  }
+  if (s.chip) await page.click(`[data-chip="${s.chip}"]`);
   if (s.settings) await page.click("#openSettings");
   if (s.layers) await page.click("#layers");
   if (s.track) {
@@ -257,6 +293,14 @@ for (const s of shots) {
       }));
       errors.push(`${s.name}: location marker has no heading (${heading}) ${JSON.stringify(info)}`);
     }
+  }
+  if (s.click && !s.pinOnly) {
+    const kind = await page.evaluate(() => document.body.dataset.sheet ?? "");
+    if (kind !== "place") errors.push(`${s.name}: the pin's callout opened "${kind}" instead of the place card`);
+  }
+  if (s.expect) {
+    const status = (await page.textContent("#strip .strip-status").catch(() => "")) ?? "";
+    if (!s.expect.test(status)) errors.push(`${s.name}: lens status "${status}"`);
   }
   if (s.track) {
     const hud = (await page.textContent("#targetHud").catch(() => "")) ?? "";

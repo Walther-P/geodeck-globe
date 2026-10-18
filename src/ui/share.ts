@@ -14,7 +14,7 @@ export interface SharedView {
   track: { kind: "plane" | "sat"; id: string } | null;
 }
 
-const LENSES = new Set(["weather", "traffic", "parking", "sky"]);
+const LENSES = new Set(["weather", "traffic", "parking", "sky", "radio"]);
 const FX = new Set(["", "nvg", "flir", "ironbow", "crt", "noir", "snow"]);
 const MAPS = new Set(["baiyan", "g-road", "g-dark", "g-sat", "g-terrain"]);
 const round = (v: number, d: number) => Number(v.toFixed(d));

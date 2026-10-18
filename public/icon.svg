@@ -1,8 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#04080d"/>
-  <path d="M48 256C124 146 190 108 256 108s132 38 208 148c-76 110-142 148-208 148S124 366 48 256Z" fill="#0c1319" stroke="#5eead4" stroke-width="16" stroke-linejoin="round"/>
-  <circle cx="256" cy="256" r="106" fill="#0b2a33" stroke="#5eead4" stroke-width="10"/>
-  <ellipse cx="256" cy="256" rx="44" ry="106" fill="none" stroke="#5eead4" stroke-width="6" opacity=".55"/>
-  <path d="M150 256h212M164 202h184M164 310h184" stroke="#5eead4" stroke-width="6" opacity=".55"/>
-  <circle cx="256" cy="256" r="32" fill="#fbbf24"/>
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="45%" r="70%">
+      <stop offset="0" stop-color="#0d2029"/>
+      <stop offset="1" stop-color="#02050a"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <g opacity=".08" stroke="#5eead4" stroke-width="2">
+    <path d="M0 128H512M0 192H512M0 256H512M0 320H512M0 384H512M128 0V512M192 0V512M256 0V512M320 0V512M384 0V512"/>
+  </g>
+  <g fill="none" stroke="#5eead4" stroke-width="14" stroke-linecap="square">
+    <path d="M78 142V78H142M370 78H434V142M434 370V434H370M142 434H78V370"/>
+  </g>
+  <path d="M92 256Q256 112 420 256Q256 400 92 256Z" fill="#06121a" stroke="#5eead4" stroke-width="14" stroke-linejoin="round"/>
+  <circle cx="256" cy="256" r="80" fill="#0a2530" stroke="#5eead4" stroke-width="8"/>
+  <path d="M256 256L256 176A80 80 0 0 1 325.3 216Z" fill="#5eead4" opacity=".28"/>
+  <circle cx="256" cy="256" r="104" fill="none" stroke="#5eead4" stroke-width="4" stroke-dasharray="6 14" opacity=".55"/>
+  <path d="M256 140V196M256 316V372M140 256H196M316 256H372" stroke="#5eead4" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="256" cy="256" r="36" fill="#fbbf24" opacity=".25"/>
+  <circle cx="256" cy="256" r="22" fill="#fbbf24"/>
+  <circle cx="248" cy="248" r="6" fill="#fff7d6" opacity=".9"/>
 </svg>

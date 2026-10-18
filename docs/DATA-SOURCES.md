@@ -11,6 +11,8 @@
 | 全球地震 | [USGS](https://earthquake.usgs.gov/earthquakes/feed/) 24 小時 M2.5+ | 直連，失敗改轉送 | 公有領域 | 每分鐘 |
 | 地震報告、颱風路徑、天氣特報 | [中央氣象署開放資料](https://opendata.cwa.gov.tw) E-A0015-001、E-A0016-001、W-C0034-005、W-C0033-001 | 使用者自己的授權碼，直連，失敗改轉送（不快取） | 政府資料開放授權條款第 1 版 | 即時 |
 | 航班 | 社群 ADS-B：adsb.lol、airplanes.live、adsb.fi、adsb.one、OpenSky（依序嘗試） | 都不允許瀏覽器直連，只能轉送；只有 adsb.lol 有時接受 Cloudflare 的伺服器。轉送保留最後一份成功的資料 10 分鐘，來源限流時先用它；App 依資料時間推算位置最多 2 分鐘 | 各網站條款 | 即時 |
+| 風場 | [Open-Meteo](https://open-meteo.com) 現在 10 m 風（一次請求整個視野的格點） | 直連 | CC BY 4.0；免費方案限非商業 | 每小時（模式） |
+| 全球電台 | [Radio Browser](https://www.radio-browser.info)（社群資料庫） | 直連（允許瀏覽器讀取）；只用 https 串流 | 公開資料庫；播放時依其要求回報點擊 | 社群更新 |
 | 火箭發射時程 | [The Space Devs Launch Library 2](https://thespacedevs.com/llapi) | 直連，失敗改轉送（快取 1 小時） | 免費方案每 IP 每小時 15 次 | 每小時 |
 | 衛星軌道 | [CelesTrak](https://celestrak.org) GP 資料，SGP4 推算 | 轉送（快取 4 小時）；建置時另存快照 | CelesTrak 使用條款 | 每日 |
 | 停車目錄 | OpenStreetMap ＋ 臺北、新北、桃園、臺中、臺南開放資料（GeoDeck 0.7 整理，2026-09-27） | 打包在 `public/data/parking/` | ODbL（含 OSM）＋政府資料開放授權條款；見 `public/data/parking/LICENSE.md` | 手動重建 |

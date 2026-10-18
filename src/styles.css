@@ -375,7 +375,7 @@ body[data-fx="flir"] .fx {
   bottom: calc(var(--safe-bottom) + 10px);
   height: var(--dock-h);
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 6px;
   padding: 6px;
   border: 1px solid var(--line);
@@ -487,7 +487,8 @@ body[data-fx="flir"] .fx {
   flex: 1;
   accent-color: var(--accent);
 }
-.timeline .play {
+.timeline .play,
+.player .play {
   width: 32px;
   height: 32px;
   border: 1px solid var(--line-strong);
@@ -1361,4 +1362,155 @@ body[data-tracking="sat"] .th-lock {
     right: auto;
     width: 440px;
   }
+}
+
+/* ---- Drop pin --------------------------------------------------------------- */
+
+.drop-pin {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+  z-index: 3;
+}
+.drop-pin > * {
+  pointer-events: auto;
+}
+.pin-card {
+  position: relative;
+  margin-bottom: 6px;
+  filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.55));
+}
+.drop-pin.collapsed .pin-card {
+  display: none;
+}
+.pin-callout {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-width: 150px;
+  max-width: 230px;
+  padding: 8px 34px 8px 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--panel-solid);
+  color: var(--text);
+  text-align: left;
+  font-size: 13px;
+}
+.pin-callout b {
+  max-width: 190px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 14px;
+}
+.pin-callout small {
+  font: 10.5px var(--mono);
+  color: var(--dim);
+}
+.pin-go {
+  margin-top: 3px;
+  font-size: 12.5px;
+  color: var(--accent);
+}
+.pin-card::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  width: 10px;
+  height: 10px;
+  background: var(--panel-solid);
+  border-right: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line-strong);
+  transform: translateX(-50%) rotate(45deg);
+}
+.pin-x {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  background: transparent;
+  color: var(--dim);
+  font-size: 18px;
+}
+.pin-mark {
+  display: block;
+  cursor: pointer;
+}
+.drop-pin.dropped .pin-mark {
+  animation: pin-drop 0.38s cubic-bezier(0.3, 1.6, 0.6, 1);
+}
+@keyframes pin-drop {
+  from {
+    transform: translateY(-22px);
+    opacity: 0.3;
+  }
+}
+.pin-dot {
+  position: absolute;
+  bottom: -5px;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  margin-left: -6px;
+  border: 2px solid #f87171;
+  border-radius: 50%;
+  animation: pin-ring 1.6s ease-out infinite;
+  pointer-events: none;
+}
+@keyframes pin-ring {
+  from {
+    transform: scale(0.6);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+/* ---- Radio player & wind ------------------------------------------------------ */
+
+.player {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 6px 8px;
+  border: 1px solid rgba(192, 132, 252, 0.4);
+  border-radius: 12px;
+  background: rgba(192, 132, 252, 0.08);
+}
+.player-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.player-text b,
+.player-text small {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.player-text small {
+  color: var(--dim);
+  font-size: 11px;
+}
+canvas.wind {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+.wind-legend b {
+  margin-left: 6px;
+  font-weight: 700;
 }

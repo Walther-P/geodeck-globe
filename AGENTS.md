@@ -9,7 +9,9 @@
 目標是「上帝之眼」的視覺與即時感，加上每天用得到的天氣、交通、停車。
 
 - `src/map/`：地圖與深色戰術風格樣式（`style.ts`）、圖示、圖層工具
-- `src/lenses/`：四個視角（`weather`、`traffic`、`parking`、`sky`），各自管理圖層與更新計時
+- `src/lenses/`：五個視角（`weather`、`traffic`、`parking`、`sky`、`radio`），各自管理圖層與更新計時；
+  地震在天氣視角（`quakes.ts`），風場動畫是 `src/ui/wind.ts`＋`src/data/wind.ts`
+- `src/ui/pin.ts`：點地圖先落下標記（可拖動），點標記卡片才開地點資訊；搜尋結果也會標記位置
 - `src/data/`：各資料來源的讀取與解析（`tdx.ts`、`cwa.ts`、`weather.ts`、`sky.ts`、`parking.ts`…）
 - `src/ui/`：此刻列、地點卡、搜尋、收藏、設定
 - `worker/relay.ts`：轉送白名單（純函式，有測試）
@@ -30,6 +32,7 @@
 - `npm run screenshots`：用假資料截手機畫面並做煙霧測試（停車／交通狀態列不能有錯誤、定位扇形、
   分享連結能打開地點）；CI 部署前會跑，失敗就不部署（需先 build，`CHROMIUM_PATH` 可指定瀏覽器）
 - `npm run probe`：實測所有資料來源（CI 每次都會跑，結果在 Actions Summary）
+- `node scripts/render-icons.mjs`：改 `public/icon.svg`／`icon-maskable.svg` 後重畫 PNG 圖示
 
 ## 必須遵守
 

@@ -1,7 +1,7 @@
 {
   "name": "百眼",
   "short_name": "百眼",
-  "description": "百眼：手機優先的 3D 地球情報地圖：天氣、交通、停車、天空即時資訊",
+  "description": "百眼：手機優先的 3D 地球情報地圖：天氣、交通、停車、天空、電台即時資訊",
   "lang": "zh-Hant",
   "start_url": "./",
   "scope": "./",
@@ -12,12 +12,36 @@
   "share_target": {
     "action": "./",
     "method": "GET",
-    "params": { "title": "title", "text": "text", "url": "url" }
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
   },
   "icons": [
-    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
-    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml" }
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
   ]
 }

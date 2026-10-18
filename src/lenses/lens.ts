@@ -4,13 +4,13 @@ import type { Place } from "../data/places";
 import type { Point } from "../lib/util";
 import type { Sheet } from "../ui/dom";
 
-export type LensId = "weather" | "traffic" | "parking" | "sky";
+export type LensId = "weather" | "traffic" | "parking" | "sky" | "radio";
 export type Tone = "ok" | "warn" | "bad";
 
 export interface AppContext {
   map: GlobeMap;
   sheet: Sheet;
-  toast(text: string): void;
+  toast(text: string, ms?: number): void;
   /** Update the strip status line for a lens (shown while it has focus). */
   status(lens: LensId, text: string, tone?: Tone): void;
   /** Re-render the strip (chips/controls) for a lens. */
