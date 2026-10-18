@@ -59,7 +59,8 @@ twipcam 轉載的靜態快照：只在有人點開那支鏡頭時才載入，標
 | Google 地圖頁面（`/api/resolve` 讀座標） | — | Cloudflare 回 429 | 短網址轉到沒有座標的網址時，改用網址裡的店名＋地址搜尋 |
 | TDX（token 與資料） | **不可（CORS）** | Cloudflare 可 | 所以 TDX 一律經轉送（帶使用者自己的金鑰，不快取）；token、停車場、剩餘車位、CCTV、路邊路段、公車都已在正式網站實測 |
 | TDX 連續呼叫 | — | 每分鐘第 6 次回 429 | 回應 `API rate limit exceeded`、`Retry-After` 約 20 秒（間隔 3 秒也一樣），所以是每分鐘額度；App 每分鐘最多 5 次、停車優先、靜態清單快取 6 小時 |
-| Google 標誌圖檔 | 可（`<img>`） | — | `developers.google.com/static/...google_on_non_white.png` 載入失敗；App 依序嘗試 `maps.gstatic.com` 等官方圖檔，實測結果見 Actions Summary |
+| Google 標誌圖檔 | 可（`<img>`） | — | `maps.gstatic.com/mapfiles/api-3/images/google_white5(_hdpi).png` 與 `www.gstatic.com` 品牌圖可載入；`developers.google.com` 的圖檔網址失效 |
+| App 端到端（臺南停車＋TDX 金鑰） | — | 可 | 正式網站實測：「577 處 · 即時：停車場 76/108、路段 451/451 有 5 分鐘內資料」 |
 | TDX 路邊停車 | — | 可 | `ParkingSegments`（`ParkingSegmentPosition` 為點）與 `CurbParkingSegmentAvailabilities`（每分鐘更新，有 `DataCollectTime`）；臺南、臺北已實測 |
 | 氣象署 | 可 | 可 | 特報、地震報告、颱風（欄位為大寫開頭，例如 `TropicalCyclones.TropicalCyclone`） |
 

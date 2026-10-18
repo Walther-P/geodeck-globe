@@ -108,7 +108,6 @@ const results = await page.evaluate(async (keys) => {
   for (const src of [
     "https://maps.gstatic.com/mapfiles/api-3/images/google_white5_hdpi.png",
     "https://maps.gstatic.com/mapfiles/api-3/images/google_white5.png",
-    "https://developers.google.com/maps/documentation/images/google_on_non_white.png",
     "https://www.gstatic.com/images/branding/googlelogo/2x/googlelogo_color_92x30dp.png",
   ]) {
     const logo = await new Promise((resolve) => {

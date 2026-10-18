@@ -35,11 +35,10 @@ export const OVERLAYS: Record<OverlayId, { label: string; layer: string }> = {
 const CHOICE = "gdg.basemap.v1";
 const SESSIONS = "gdg.gsession.v1";
 const TILES = "https://tile.googleapis.com";
-/** Google's own logo files, tried in order (the live probe reports which load). */
+/** Google's own logo files, tried in order (all three loaded in the live probe, 2026-10-18). */
 export const GOOGLE_LOGOS = [
   "https://maps.gstatic.com/mapfiles/api-3/images/google_white5_hdpi.png",
   "https://maps.gstatic.com/mapfiles/api-3/images/google_white5.png",
-  "https://developers.google.com/maps/documentation/images/google_on_non_white.png",
   "https://www.gstatic.com/images/branding/googlelogo/2x/googlelogo_color_92x30dp.png",
 ];
 /** Every layer of 百眼's own map except the background. */
