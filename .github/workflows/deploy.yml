@@ -41,10 +41,20 @@ jobs:
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
       - run: npm test
-      - run: npm run build
+      - name: Build
         env:
-          # A browser key (it ships in the page); restrict it to this site's URL.
-          VITE_GOOGLE_MAPS_KEY: ${{ secrets.GOOGLE_MAPS_KEY }}
+          GOOGLE_MAPS_KEY: ${{ secrets.GOOGLE_MAPS_KEY }}
+        # The Google key ships in the page, so only a browser API key (AIza…,
+        # restricted to this site's URL) may go in; anything else pasted into
+        # the secret, such as a URL signing secret, must never be published.
+        run: |
+          key="$(printf '%s' "$GOOGLE_MAPS_KEY" | tr -d '[:space:]')"
+          if [[ "$key" =~ ^AIza[0-9A-Za-z_-]{35}$ ]]; then
+            export VITE_GOOGLE_MAPS_KEY="$key"
+          elif [ -n "$key" ]; then
+            echo "::warning title=GOOGLE_MAPS_KEY::Not a Google API key (it should start with AIza and be 39 characters). It was left out of the site; Google maps stay off."
+          fi
+          npm run build
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       # Opens the built app at phone size with every feed faked and fails the

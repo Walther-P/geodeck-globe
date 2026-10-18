@@ -10,6 +10,8 @@ import { navPreference } from "./place";
 
 export const VERSION = "0.2.0";
 
+const GOOGLE_KEY = /^AIza[0-9A-Za-z_-]{35}$/;
+
 export function openSettings(sheet: Sheet, toast: (t: string) => void, focus?: string, checkUpdate?: () => void): void {
   const k = keys();
   const pref = navPreference();
@@ -50,7 +52,7 @@ export function openSettings(sheet: Sheet, toast: (t: string) => void, focus?: s
     <ol class="steps">
       <li>到 <a href="https://console.cloud.google.com/google/maps-apis/start" target="_blank" rel="noopener">Google Cloud 的 Maps Platform</a> 建立專案並啟用帳單（需要信用卡；Google 每月有免費用量）。</li>
       <li>在「API 和服務 → 程式庫」啟用 <b>Map Tiles API</b>、<b>Maps JavaScript API</b> 和 <b>Places API (New)</b>。</li>
-      <li>「憑證 → 建立憑證 → API 金鑰」。編輯金鑰：應用程式限制選「網站」，加入 <code>${esc(location.origin)}/*</code>；API 限制只勾上面三個。</li>
+      <li>「金鑰和憑證 → 建立憑證 → API 金鑰」，複製 <b>AIza 開頭</b>的金鑰（不是「網址簽署密鑰」）。編輯金鑰：應用程式限制選「網站」，加入 <code>${esc(location.origin)}/*</code>；API 限制只勾上面三個。</li>
       <li>建議在「配額」把每日上限調低，就不會有意外費用。</li>
     </ol>
     <label class="field"><span>Google API 金鑰（目前：${esc(mask(k.google))}）</span><input id="googleKey" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(k.google)}"></label>
@@ -112,7 +114,10 @@ export function openSettings(sheet: Sheet, toast: (t: string) => void, focus?: s
     }
   });
   body.querySelector("#saveGoogle")!.addEventListener("click", async () => {
-    saveKeys({ google: body.querySelector<HTMLInputElement>("#googleKey")!.value });
+    const google = body.querySelector<HTMLInputElement>("#googleKey")!.value.trim();
+    // The URL signing secret on the same Google page is a common mix-up.
+    if (google && !GOOGLE_KEY.test(google)) return result("#googleResult", false, "✗ 這不是 Google API 金鑰：應該是 AIza 開頭、39 個字（不是「網址簽署密鑰」）");
+    saveKeys({ google });
     if (!hasGoogle()) return result("#googleResult", false, "已清除 Google 金鑰");
     result("#googleResult", true, "測試中…");
     try {
