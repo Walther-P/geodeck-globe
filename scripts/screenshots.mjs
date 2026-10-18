@@ -105,7 +105,7 @@ for (const s of shots) {
     hasTouch: true,
     serviceWorkers: "block",
     geolocation: { latitude: 22.9925, longitude: 120.2048, accuracy: 25 },
-    permissions: ["geolocation"],
+    permissions: ["geolocation", "accelerometer", "gyroscope", "magnetometer"],
   });
   await ctx.addInitScript(({ view, lenses, fx }) => {
     localStorage.setItem("gdg.view.v1", JSON.stringify(view));
@@ -151,7 +151,14 @@ for (const s of shots) {
   }
   if (s.locate) {
     const heading = await page.getAttribute(".me", "data-heading").catch(() => null);
-    if (heading !== "on") errors.push(`${s.name}: location marker has no heading (${heading})`);
+    if (heading !== "on") {
+      const info = await page.evaluate(() => ({
+        hasEvent: typeof DeviceOrientationEvent,
+        asks: typeof DeviceOrientationEvent?.requestPermission,
+        toast: document.getElementById("toast")?.textContent,
+      }));
+      errors.push(`${s.name}: location marker has no heading (${heading}) ${JSON.stringify(info)}`);
+    }
   }
   if (s.share) {
     const title = (await page.textContent("#sheetTitle").catch(() => "")) ?? "";
