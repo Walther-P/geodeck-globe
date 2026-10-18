@@ -200,10 +200,16 @@ interface FlightSource {
   parse(d: unknown): Aircraft[];
 }
 
-// Order follows scripts/live-probe.mjs results: networks that let browsers
-// read them directly come first, so each visitor uses their own rate limit;
-// the relay (shared Cloudflare IPs, often rate-limited) is the fallback.
+// None of these let browsers read them directly (scripts/live-probe.mjs), so
+// all go through the relay. adsb.lol only rate-limits Cloudflare's shared
+// IPs now and then; the others refuse them outright, so it goes first.
 export const FLIGHT_SOURCES: FlightSource[] = [
+  {
+    name: "adsb.lol",
+    url: (lat, lng, nm) => `https://api.adsb.lol/v2/point/${lat}/${lng}/${nm}`,
+    route: "relay",
+    parse: (d) => parseAdsb(d as Parameters<typeof parseAdsb>[0]),
+  },
   {
     name: "airplanes.live",
     url: (lat, lng, nm) => `https://api.airplanes.live/v2/point/${lat}/${lng}/${nm}`,
@@ -232,12 +238,6 @@ export const FLIGHT_SOURCES: FlightSource[] = [
     },
     route: "direct-then-relay",
     parse: (d) => parseOpenSky(d as Parameters<typeof parseOpenSky>[0]),
-  },
-  {
-    name: "adsb.lol",
-    url: (lat, lng, nm) => `https://api.adsb.lol/v2/point/${lat}/${lng}/${nm}`,
-    route: "relay",
-    parse: (d) => parseAdsb(d as Parameters<typeof parseAdsb>[0]),
   },
 ];
 

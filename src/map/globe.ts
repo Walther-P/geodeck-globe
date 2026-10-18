@@ -199,6 +199,40 @@ const ICONS: Record<string, { size: number; draw: Draw }> = {
       g.stroke();
     },
   },
+  "p-lot": {
+    size: 24,
+    draw: (g, s) => {
+      g.fillStyle = "#1d4ed8";
+      g.strokeStyle = "#e2e8f0";
+      g.lineWidth = 1.5;
+      g.beginPath();
+      g.roundRect(1.5, 1.5, s - 3, s - 3, 5);
+      g.fill();
+      g.stroke();
+      g.fillStyle = "#ffffff";
+      g.font = `bold ${s * 0.62}px system-ui, sans-serif`;
+      g.textAlign = "center";
+      g.textBaseline = "middle";
+      g.fillText("P", s / 2, s / 2 + 1);
+    },
+  },
+  "p-curb": {
+    size: 24,
+    draw: (g, s) => {
+      g.fillStyle = "#0f766e";
+      g.strokeStyle = "#ccfbf1";
+      g.lineWidth = 1.5;
+      g.beginPath();
+      g.arc(s / 2, s / 2, s / 2 - 1.5, 0, Math.PI * 2);
+      g.fill();
+      g.stroke();
+      g.fillStyle = "#ffffff";
+      g.font = `bold ${s * 0.5}px "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif`;
+      g.textAlign = "center";
+      g.textBaseline = "middle";
+      g.fillText("路", s / 2, s / 2 + 1);
+    },
+  },
 };
 
 export function addIcons(map: GlobeMap): void {

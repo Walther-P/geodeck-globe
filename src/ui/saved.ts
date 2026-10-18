@@ -56,7 +56,7 @@ export function openSaved(sheet: Sheet, toast: (t: string) => void, openPlace: (
     const blob = new Blob([exportBackup()], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `geodeck-globe-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `baiyan-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   });
@@ -68,7 +68,7 @@ export function openSaved(sheet: Sheet, toast: (t: string) => void, openPlace: (
       toast(`已匯入 ${n} 個地點`);
       openSaved(sheet, toast, openPlace);
     } catch {
-      toast("這個檔案不是 GeoDeck Globe 的備份");
+      toast("這個檔案不是百眼的備份");
     }
   });
 }

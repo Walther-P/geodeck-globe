@@ -1,9 +1,9 @@
-# GeoDeck Globe
+# 百眼
 
 手機優先的 3D 地球情報地圖。打開是一顆深色地球，自動轉到你上次看的地方；
 上方「此刻」列一句話告訴你現在要注意什麼，下方四個「視角」一鍵切換整組資訊。
 
-GeoDeck 0.7（[KTAK-DEV/geodeck](https://github.com/Walther-P/KTAK-DEV/tree/main/geodeck)）的後繼版本，
+（repo 與網址沿用 `geodeck-globe`。）GeoDeck 0.7（[KTAK-DEV/geodeck](https://github.com/Walther-P/KTAK-DEV/tree/main/geodeck)）的後繼版本，
 重新設計，沒有沿用舊程式；只沿用了舊版整理好的台灣停車目錄、測速點與公路影像目錄。
 
 ## 功能
@@ -15,8 +15,8 @@ GeoDeck 0.7（[KTAK-DEV/geodeck](https://github.com/Walther-P/KTAK-DEV/tree/main
 | 搜尋 | 地名、路名、座標（OpenStreetMap）；**貼上或分享 Google／Apple 地圖連結**直接跳到同一個地點；加上自己的 Google 金鑰後可搜到和 Google 地圖一樣的店家 | Google 搜尋選填 |
 | 此刻列 | 我的位置或地圖中心：天氣、三小時內何時下雨、AQI、附近 6 小時內 M4+ 地震、所在縣市天氣特報 | 特報要氣象署 |
 | 天氣視角 | 雷達回波（可回放）、向日葵衛星雲圖、颱風路徑與七級風圈、天氣特報 | 颱風、特報要氣象署 |
-| 交通視角 | 公路影像（高公局、公路局）、警政署測速點、公車即時位置；有 TDX 時補上更多道路影像 | 公車要 TDX |
-| 停車視角 | 全台與離島 69,723 個停車位置（停車場、路邊、個別車格）、即時剩餘車位、我的停車位置 | 即時車位要 TDX |
+| 交通視角 | 11,514 支道路與河川影像，點開直接看畫面（官方即時串流，或轉載快照每 30 秒更新）；警政署測速點；公車即時位置；有 TDX 時改用官方的縣市即時影像 | 公車要 TDX |
+| 停車視角 | 全台與離島 69,723 個停車位置；藍色方形 P＝停車場、綠色圓形「路」＝路邊，旁邊數字是即時剩餘格數（綠多、橙快滿、紅滿、灰 ? 為資料超過 5 分鐘）；我的停車位置 | 即時車位要 TDX |
 | 天空視角 | 即時航班（ADS-B）、衛星與太空站（含何時從你上空經過）、Starlink、全球地震 | 不用 |
 | 地點卡 | 點地圖任何一點：逐時天氣（降雨機率＋雨量）、空氣品質、附近影像與停車、交給導航 App、收藏、分享 | 不用 |
 | 收藏 | 收藏地點、備註、停車位置，存在裝置上，離線可看，可匯出／匯入備份 | 不用 |
@@ -28,7 +28,8 @@ GeoDeck 0.7（[KTAK-DEV/geodeck](https://github.com/Walther-P/KTAK-DEV/tree/main
 - **TDX 運輸資料流通服務**（免費）：<https://tdx.transportdata.tw/register> 註冊 → 會員中心 → API 金鑰，取得 Client Id 與 Client Secret。
 - **中央氣象署開放資料**（免費）：<https://opendata.cwa.gov.tw/user/authkey> 登入 → 取得授權碼（CWA- 開頭）。
 
-另外可選填 **Google 地點搜尋金鑰**（Google Cloud：啟用 Maps JavaScript API 與 Places API (New)，金鑰限制在本站網址；
+**Google 地點搜尋**：站長在 repository secrets 設定 `GOOGLE_MAPS_KEY`（瀏覽器金鑰，限制在本站網址）後，
+所有人都能直接搜到和 Google 地圖一樣的店家；使用者也可以在設定填自己的 **Google 地點搜尋金鑰**（Google Cloud：啟用 Maps JavaScript API 與 Places API (New)，金鑰限制在本站網址；
 需要帳單帳戶，每月有免費用量）。沒有這把金鑰也能貼上 Google 地圖的分享連結。
 
 金鑰只存在該使用者手機的瀏覽器（localStorage），直接送到官方網站；只有官方網站不允許瀏覽器直接讀取時，

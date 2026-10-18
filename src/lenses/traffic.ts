@@ -4,7 +4,7 @@ import type { MapGeoJSONFeature } from "maplibre-gl";
 import { hasTdx } from "../data/keys";
 import { bundledCameras, enforcementPoints, type EnforcementPoint } from "../data/roads";
 import { citiesAt } from "../data/taiwan";
-import { buses, cctv, type Bus, type Camera } from "../data/tdx";
+import { buses, cameraSrc, cctv, type Bus, type Camera } from "../data/tdx";
 import { ago } from "../lib/time";
 import { distance, escapeHtml as esc, safeUrl } from "../lib/util";
 import { EMPTY, addLayers, hideLayers, points, setData } from "../map/globe";
@@ -114,7 +114,7 @@ export class TrafficLens implements Lens {
     setData(
       map,
       "tr-cams",
-      points([...this.cams.values()], (c) => ({ id: c.id, live: !!c.image })),
+      points([...this.cams.values()], (c) => ({ id: c.id, live: !!(c.image || c.mirror) })),
       { radius: 44, maxZoom: 11 },
     );
     addLayers(map, [
@@ -166,7 +166,10 @@ export class TrafficLens implements Lens {
         return;
       }
       for (const cam of r.value) {
-        if (existing.some((e) => Math.abs(e.lat - cam.lat) < 0.0005 && Math.abs(e.lng - cam.lng) < 0.0005 && distance(e, cam) < 40)) continue;
+        const same = existing.find((e) => Math.abs(e.lat - cam.lat) < 0.0005 && Math.abs(e.lng - cam.lng) < 0.0005 && distance(e, cam) < 40);
+        // The operator's live feed beats a third-party snapshot of the same camera.
+        if (same?.image || (same && !cam.image)) continue;
+        if (same) this.cams.delete(same.id);
         this.cams.set(cam.id, cam);
         added++;
       }
@@ -182,19 +185,26 @@ export class TrafficLens implements Lens {
     const c = this.cams.get(id);
     if (!c) return;
     const page = safeUrl(c.page);
-    const image = safeUrl(c.image, { httpsOnly: true });
+    const live = cameraSrc(c.image);
+    const snapshot = live ? null : cameraSrc(c.mirror);
+    const src = live ?? snapshot;
+    let refresh = 0;
     const body = this.ctx.sheet.open(
       "camera",
-      "LIVE CAMERA",
+      live ? "LIVE CAMERA" : "CAMERA SNAPSHOT",
       c.name,
-      `${image ? `<div class="cam"><p>影像載入中…</p><img id="camImg" alt="${esc(c.name)} 即時影像"><span class="live-tag">● LIVE</span></div>` : `<p class="muted">這支鏡頭的影像由外部目錄提供，本站不直接轉載；可以到原站觀看。</p>`}
-      <p class="micro">來源：${esc(c.source)}。畫面時間以影像本身為準；載入失敗不代表道路有狀況。</p>
+      `${
+        src
+          ? `<div class="cam"><p>影像載入中…</p><img id="camImg" alt="${esc(c.name)} 影像"><span class="live-tag">${live ? "● LIVE" : "◷ 快照"}</span></div>`
+          : `<p class="muted">這支鏡頭目前沒有可顯示的影像網址。</p>`
+      }
+      <p class="micro">來源：${esc(c.source)}${snapshot ? "（每 30 秒自動更新）" : ""}。畫面時間以影像本身為準；載入失敗不代表道路有狀況。${page ? ` <a href="${esc(page)}" target="_blank" rel="noopener">原站</a>` : ""}</p>
       <div class="actions">
-        ${image ? `<button class="btn" id="camReload">重新整理</button>` : ""}
-        ${page ? `<a class="btn" href="${esc(page)}" target="_blank" rel="noopener">原站頁面</a>` : ""}
+        ${src ? `<button class="btn" id="camReload">重新整理</button>` : ""}
         <button class="btn" id="camPlace">這裡的天氣與停車</button>
       </div>`,
       () => {
+        clearInterval(refresh);
         // Stop the MJPEG stream; otherwise it keeps downloading in the background.
         const img = document.getElementById("camImg") as HTMLImageElement | null;
         if (img) img.src = "";
@@ -202,17 +212,17 @@ export class TrafficLens implements Lens {
     );
     const img = body.querySelector<HTMLImageElement>("#camImg");
     const load = () => {
-      if (!img || !image) return;
+      if (!img || !src) return;
       const p = img.previousElementSibling as HTMLElement;
       p.textContent = "影像載入中…";
       p.classList.remove("hidden");
       img.onload = () => p.classList.add("hidden");
       img.onerror = () => (p.textContent = "目前無法載入影像（可能維修中或來源暫停）");
-      const u = new URL(image);
-      u.searchParams.set("_", String(Date.now()));
-      img.src = u.toString();
+      img.src = `${src}${src.includes("?") ? "&" : "?"}_=${Date.now()}`;
     };
     load();
+    // Stills go stale; the MJPEG streams update themselves.
+    if (snapshot) refresh = window.setInterval(load, 30000);
     body.querySelector("#camReload")?.addEventListener("click", load);
     body.querySelector("#camPlace")?.addEventListener("click", () => this.ctx.openPlace({ lat: c.lat, lng: c.lng, title: c.name }));
   }

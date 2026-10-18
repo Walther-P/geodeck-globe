@@ -18,14 +18,16 @@
 | 公路影像目錄 | 高速公路局、公路局影像（座標與名稱來自 GeoDeck 0.7 的目錄快照，2026-09-20） | 打包；影像本身由主管機關伺服器提供 | 各主管機關 | 手動重建 |
 | 停車場影像關聯 | 人工核對（目前：冷水坑 1 號停車場入口） | 打包 `parking-cameras.json` | — | 90 天未複核自動停用 |
 | 地點搜尋、反查地名 | [Photon](https://photon.komoot.io)（OpenStreetMap） | 直連 | ODbL；公共伺服器合理使用 | — |
-| 地點搜尋（選填） | Google Places（Maps JavaScript API 的 Places 程式庫） | 使用者自己的 Google 金鑰，瀏覽器直接載入；不畫 Google 地圖 | Google Maps Platform 條款；費用由金鑰擁有者負擔 | 即時 |
+| 地點搜尋（Google） | Google Places（Maps JavaScript API 的 Places 程式庫） | 站長金鑰（建置時注入）或使用者自己的金鑰，瀏覽器直接載入；不畫 Google 地圖 | Google Maps Platform 條款；費用由金鑰擁有者負擔 | 即時 |
 | 分享連結解析 | Google 地圖短網址（maps.app.goo.gl）→ 本站 `/api/resolve` 跟隨轉址，必要時讀頁面上的座標 | 只接受 Google 地圖網址、只跟隨 Google 網域，結果快取 1 天 | — | — |
 
 ## 公路影像目錄的處理
 
 GeoDeck 0.7 的目錄有 11,514 支鏡頭，其中 4,302 支的影像網址是公路主管機關自己的伺服器
-（freeway.gov.tw、thb.gov.tw），本站直接顯示。其餘影像網址指向第三方鏡像站，本站只保留位置與
-原站連結，不直接轉載影像。
+（freeway.gov.tw、thb.gov.tw），點開直接看官方串流。其餘 7,212 支（水利署、各縣市道路）只有
+twipcam 轉載的靜態快照：只在有人點開那支鏡頭時才載入，標示出處，每 30 秒更新一次，不做縮圖或預載。
+有 TDX 金鑰時，同位置（40 m 內）的官方縣市即時影像會取代轉載快照。官方影像如果只有 http，
+經本站 `/api/cam` 轉接（只限 `*.gov.tw`），因為 https 網頁不能載入 http 影像。
 
 ## 轉送伺服器（`/relay`）
 
@@ -54,7 +56,8 @@ GeoDeck 0.7 的目錄有 11,514 支鏡頭，其中 4,302 支的影像網址是�
 | Photon 搜尋／反查 | 可 | 不需要 | 「赤崁樓」可找到 |
 | OpenFreeMap TileJSON／字型 | 可 | 不需要 | 圖磚有 `name:zh-Hant` |
 | Google 地圖頁面（`/api/resolve` 讀座標） | — | Cloudflare 回 429 | 短網址轉到沒有座標的網址時，改用網址裡的店名＋地址搜尋 |
-| TDX、氣象署 | 待測 | 待測 | 需要在 repository secrets 設定 `PROBE_TDX_ID`、`PROBE_TDX_SECRET`、`PROBE_CWA_KEY` 才會實測 |
+| TDX（token 與資料） | **不可（CORS）** | GitHub 機房可 | 所以 TDX 一律經轉送（帶使用者自己的金鑰，不快取） |
+| 氣象署 | 可 | 可 | 特報、地震報告、颱風（欄位為大寫開頭，例如 `TropicalCyclones.TropicalCyclone`） |
 
 公路局、高公局影像用 `<img>` 顯示，不需要 CORS；它們的伺服器可能擋國外 IP，所以 CI 的直連結果不代表台灣使用者的情況。
 

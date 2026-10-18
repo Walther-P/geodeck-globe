@@ -1,4 +1,5 @@
 import { MAX_RELAY_BYTES, isSameOriginRequest, matchRelayRule } from "./relay";
+import { cameraContentType, cameraTarget } from "./camera";
 import { allowedHop, coordinatesFromHtml, hasCoordinates, resolvableStart } from "./resolve";
 
 interface Env {
@@ -34,7 +35,7 @@ async function relay(request: Request, ctx: ExecutionContext): Promise<Response>
     }
   }
 
-  const headers = new Headers({ "user-agent": "GeoDeckGlobe/0.1 (+https://github.com/Walther-P/geodeck-globe)" });
+  const headers = new Headers({ "user-agent": "Baiyan/0.2 (+https://github.com/Walther-P/geodeck-globe)" });
   for (const name of FORWARDED_REQUEST_HEADERS) {
     const value = request.headers.get(name);
     if (value && (rule.keyed || name !== "authorization")) headers.set(name, value);
@@ -139,11 +140,38 @@ async function resolveLink(request: Request, ctx: ExecutionContext): Promise<Res
   return out;
 }
 
+/** Streams an http-only government camera feed to our https page. */
+async function cameraProxy(request: Request): Promise<Response> {
+  const self = new URL(request.url);
+  if (!isSameOriginRequest(request.headers, self.origin)) return fail(403, "for this site only");
+  const target = cameraTarget(self.searchParams.get("u"));
+  if (!target) return fail(400, "not a government camera");
+  // Give up if the camera doesn't answer quickly; once it does, let the
+  // stream run for as long as the viewer keeps the card open.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+  let upstream: Response;
+  try {
+    upstream = await fetch(target.href, { headers: { "user-agent": BROWSER_HEADERS["user-agent"] }, signal: controller.signal });
+  } catch {
+    return fail(504, "camera did not answer");
+  } finally {
+    clearTimeout(timer);
+  }
+  const type = upstream.headers.get("content-type");
+  if (!upstream.ok || !cameraContentType(type)) {
+    await upstream.body?.cancel();
+    return fail(502, "camera sent no image");
+  }
+  return new Response(upstream.body, { headers: { "content-type": type!, "cache-control": "no-store", "x-relay-cache": "MISS" } });
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/relay") return relay(request, ctx);
     if (url.pathname === "/api/resolve") return resolveLink(request, ctx);
+    if (url.pathname === "/api/cam") return cameraProxy(request);
     if (url.pathname.startsWith("/api/")) return fail(404, "not found");
     return env.ASSETS.fetch(request);
   },

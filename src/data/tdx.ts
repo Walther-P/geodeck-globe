@@ -167,9 +167,28 @@ export interface Camera {
   name: string;
   lat: number;
   lng: number;
+  /** The operator's own feed (MJPEG stream or still image). */
   image: string | null;
+  /** A third-party still snapshot, used only when there is no official feed. */
+  mirror?: string | null;
   page: string | null;
   source: string;
+}
+
+/**
+ * Pages are https, so an operator feed that is http-only goes through our
+ * Worker (government hosts only); everything else loads directly.
+ */
+export function cameraSrc(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    if (u.protocol === "https:") return u.toString();
+    if (u.protocol === "http:" && /(^|\.)gov\.tw$/.test(u.hostname)) return `./api/cam?u=${encodeURIComponent(u.toString())}`;
+  } catch {
+    /* not a URL */
+  }
+  return null;
 }
 
 interface TdxCctv {
@@ -201,6 +220,7 @@ export function normalizeCctv(data: { CCTVs?: TdxCctv[] } | TdxCctv[], scope: st
       name,
       ...pos,
       image: safeUrl(c.VideoImageURL) ?? safeUrl(c.VideoStreamURL),
+      mirror: null,
       page: null,
       source: "TDX",
     });

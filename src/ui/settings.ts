@@ -1,5 +1,5 @@
 import { testCwa } from "../data/cwa";
-import { testGoogle } from "../data/google";
+import { siteGoogleKey, testGoogle } from "../data/google";
 import { clearKeys, hasCwa, hasGoogle, hasTdx, keys, mask, saveKeys } from "../data/keys";
 import { NAV_APPS, type NavApp } from "../data/places";
 import { forgetTdxToken, testTdx } from "../data/tdx";
@@ -8,7 +8,7 @@ import { escapeHtml as esc } from "../lib/util";
 import type { Sheet } from "./dom";
 import { navPreference } from "./place";
 
-export const VERSION = "0.1.0";
+export const VERSION = "0.2.0";
 
 export function openSettings(sheet: Sheet, toast: (t: string) => void, focus?: string, checkUpdate?: () => void): void {
   const k = keys();
@@ -18,7 +18,7 @@ export function openSettings(sheet: Sheet, toast: (t: string) => void, focus?: s
     "SETTINGS",
     "設定與資料金鑰",
     `<h2 id="keys">資料金鑰（各自申請，只存在你的手機）</h2>
-    <p class="muted">GeoDeck Globe 不提供共用金鑰。公車、即時車位、更多道路影像需要 <b>TDX</b>；颱風、特報、氣象署地震報告需要<b>氣象署授權碼</b>。兩者都免費。沒有金鑰也能用：天氣、雷達、雲圖、全球地震、航班、衛星、停車目錄、測速點、公路影像。</p>
+    <p class="muted">百眼不提供共用的 TDX／氣象署金鑰。公車、即時車位、更多道路影像需要 <b>TDX</b>；颱風、特報、氣象署地震報告需要<b>氣象署授權碼</b>。兩者都免費。沒有金鑰也能用：天氣、雷達、雲圖、全球地震、航班、衛星、停車目錄、測速點、公路影像。</p>
 
     <h2 id="tdx">TDX 運輸資料 ${hasTdx() ? '<span class="ok">● 已設定</span>' : ""}</h2>
     <ol class="steps">
@@ -41,8 +41,12 @@ export function openSettings(sheet: Sheet, toast: (t: string) => void, focus?: s
     <div class="actions"><button class="btn primary" id="saveCwa">儲存並測試氣象署</button></div>
     <p id="cwaResult" class="muted" role="status"></p>
 
-    <h2 id="google">Google 地點搜尋（選填） ${hasGoogle() ? '<span class="ok">● 已設定</span>' : ""}</h2>
-    <p class="muted">沒有這把金鑰也能搜尋（用 OpenStreetMap），也能貼上 Google 地圖的分享連結。加上自己的 Google 金鑰後，打「某某餐廳」就能找到和 Google 地圖一樣的店家。</p>
+    <h2 id="google">Google 地點搜尋 ${hasGoogle() ? '<span class="ok">● 使用你的金鑰</span>' : siteGoogleKey() ? '<span class="ok">● 本站已提供</span>' : ""}</h2>
+    <p class="muted">${
+      siteGoogleKey()
+        ? "本站已開啟 Google 地點搜尋，不用設定也能直接搜到和 Google 地圖一樣的店家。下面可以改用你自己的金鑰（選填）。"
+        : "沒有這把金鑰也能搜尋（用 OpenStreetMap），也能貼上 Google 地圖的分享連結。加上自己的 Google 金鑰後，打「某某餐廳」就能找到和 Google 地圖一樣的店家。"
+    }</p>
     <ol class="steps">
       <li>到 <a href="https://console.cloud.google.com/google/maps-apis/start" target="_blank" rel="noopener">Google Cloud 的 Maps Platform</a> 建立專案並啟用帳單（需要信用卡；Google 每月有免費用量，個人搜尋通常用不完）。</li>
       <li>在「API 和服務 → 程式庫」啟用 <b>Maps JavaScript API</b> 和 <b>Places API (New)</b>。</li>
@@ -76,7 +80,7 @@ export function openSettings(sheet: Sheet, toast: (t: string) => void, focus?: s
     <p class="micro">所有資料都可能延遲、不完整或錯誤，不可作為緊急應變或行車安全的唯一依據。</p>
 
     <h2>關於</h2>
-    <p class="micro">GeoDeck Globe ${VERSION} · <a href="https://github.com/Walther-P/geodeck-globe" target="_blank" rel="noopener">原始碼</a></p>
+    <p class="micro">百眼 ${VERSION} · <a href="https://github.com/Walther-P/geodeck-globe" target="_blank" rel="noopener">原始碼</a></p>
     <div class="actions"><button class="btn" id="checkUpdate">檢查更新</button></div>`,
   );
 

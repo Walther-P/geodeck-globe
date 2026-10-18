@@ -1,7 +1,7 @@
 {
-  "name": "GeoDeck Globe",
-  "short_name": "GeoDeck",
-  "description": "手機優先的 3D 地球情報地圖：天氣、交通、停車、天空即時資訊",
+  "name": "百眼",
+  "short_name": "百眼",
+  "description": "百眼：手機優先的 3D 地球情報地圖：天氣、交通、停車、天空即時資訊",
   "lang": "zh-Hant",
   "start_url": "./",
   "scope": "./",

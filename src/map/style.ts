@@ -67,7 +67,7 @@ const road = (id: string, classes: string[], color: string, widths: [number, num
 export function tacticalStyle(base = "./"): StyleSpecification {
   return {
     version: 8,
-    name: "GeoDeck Tactical Dark",
+    name: "Baiyan Tactical Dark",
     glyphs: "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
     projection: { type: "globe" },
     sky: {

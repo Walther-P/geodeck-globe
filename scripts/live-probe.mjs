@@ -120,6 +120,24 @@ const results = await page.evaluate(async (keys) => {
       await probe("TDX Availability Tainan", `${tdx}/v1/Parking/OffStreet/ParkingAvailability/City/Tainan?$format=JSON&$top=2`, (d) => `keys ${Object.keys(d)}; row ${JSON.stringify(d.ParkingAvailabilities?.[0] ?? {}).slice(0, 220)}`, h);
       await probe("TDX CCTV Freeway", `${tdx}/v2/Road/Traffic/CCTV/Freeway?$format=JSON&$top=1`, (d) => `keys ${Object.keys(d)}; row ${JSON.stringify(d.CCTVs?.[0] ?? {}).slice(0, 220)}`, h);
       await probe("TDX CCTV City Tainan", `${tdx}/v2/Road/Traffic/CCTV/City/Tainan?$format=JSON&$top=1`, (d) => `row ${JSON.stringify(d.CCTVs?.[0] ?? d[0] ?? {}).slice(0, 200)}`, h);
+      await probe("TDX OnStreet segment Tainan", `${tdx}/v1/Parking/OnStreet/ParkingSegment/City/Tainan?$format=JSON&$top=1`, (d) => `keys ${Object.keys(d)}; row ${JSON.stringify((d.ParkingSegments ?? d.CurbParkingSegments ?? [])[0] ?? d).slice(0, 320)}`, h);
+      await probe("TDX OnStreet availability Tainan", `${tdx}/v1/Parking/OnStreet/ParkingSegmentAvailability/City/Tainan?$format=JSON&$top=1`, (d) => `keys ${Object.keys(d)}; row ${JSON.stringify((d.ParkingSegmentAvailabilities ?? d.CurbParkingSegmentAvailabilities ?? [])[0] ?? d).slice(0, 320)}`, h);
+      await probe("TDX CCTV City Taipei", `${tdx}/v2/Road/Traffic/CCTV/City/Taipei?$format=JSON&$top=1`, (d) => `row ${JSON.stringify(d.CCTVs?.[0] ?? d[0] ?? {}).slice(0, 260)}`, h);
+      // Camera feeds through our Worker: does each answer with an image or MJPEG?
+      for (const [label, cam] of [
+        ["Cam proxy Freeway", "https://cctvn.freeway.gov.tw/abs2mjpg/bmjpg?camera=20100"],
+        ["Cam proxy Tainan city", "https://trafficvideo2.tainan.gov.tw/192168234005"],
+      ]) {
+        try {
+          const ctrl = new AbortController();
+          setTimeout(() => ctrl.abort(), 12000);
+          const r = await fetch(`${location.origin}/api/cam?u=${encodeURIComponent(cam)}`, { signal: ctrl.signal });
+          rows.push({ name: label, direct: r.ok ? "ok" : `HTTP ${r.status}`, relay: "-", note: `${r.headers.get("content-type")} ${r.ok ? "" : (await r.text()).slice(0, 80)}` });
+          ctrl.abort();
+        } catch (e) {
+          rows.push({ name: label, direct: "failed", relay: "-", note: String(e).slice(0, 100) });
+        }
+      }
       await probe("TDX Bus Tainan", `${tdx}/v2/Bus/RealTimeByFrequency/City/Tainan?$format=JSON&$top=1&$select=PlateNumb,RouteName,BusPosition,Speed,Azimuth,GPSTime,DutyStatus,BusStatus`, (d) => `row ${JSON.stringify(d[0] ?? {}).slice(0, 220)}`, h);
     }
   } else rows.push({ name: "TDX", direct: "skipped", relay: "skipped", note: "no PROBE_TDX_* secrets" });
@@ -128,7 +146,12 @@ const results = await page.evaluate(async (keys) => {
     const cwa = (id) => `https://opendata.cwa.gov.tw/api/v1/rest/datastore/${id}?Authorization=${encodeURIComponent(keys.cwa)}&format=JSON`;
     await probe("CWA warnings", cwa("W-C0033-001"), (d) => `records keys ${Object.keys(d.records ?? {})}; first ${JSON.stringify(d.records?.location?.[0] ?? {}).slice(0, 200)}`);
     await probe("CWA quake E-A0015", `${cwa("E-A0015-001")}&limit=1`, (d) => `records keys ${Object.keys(d.records ?? {})}; quake keys ${Object.keys((d.records?.Earthquake ?? d.records?.earthquake ?? [])[0] ?? {})}`);
-    await probe("CWA typhoon", cwa("W-C0034-005"), (d) => `records ${JSON.stringify(d.records ?? {}).slice(0, 240)}`);
+    await probe("CWA typhoon", cwa("W-C0034-005"), (d) => {
+      const tc = d.records?.TropicalCyclones?.TropicalCyclone?.[0] ?? d.records?.tropicalCyclones?.tropicalCyclone?.[0] ?? {};
+      const an = tc.AnalysisData ?? tc.analysisData ?? {};
+      const fc = tc.ForecastData ?? tc.forecastData ?? {};
+      return `keys ${Object.keys(tc)}; analysis ${JSON.stringify((an.Fix ?? an.fix ?? [])[0] ?? an).slice(0, 260)}; forecast ${JSON.stringify((fc.Fix ?? fc.fix ?? [])[0] ?? fc).slice(0, 260)}`;
+    });
   } else rows.push({ name: "CWA", direct: "skipped", relay: "skipped", note: "no PROBE_CWA_KEY secret" });
   return rows;
 }, keys);

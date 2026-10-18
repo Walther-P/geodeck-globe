@@ -12,7 +12,7 @@ import { escapeHtml as esc, formatCoord, safeUrl } from "../lib/util";
 import { EMPTY, addLayers, hideLayers, setData } from "../map/globe";
 import { every, viewBounds, type AppContext, type Chip, type Lens } from "./lens";
 
-const LAYERS = ["pk-cluster", "pk-cluster-count", "pk-dot", "pk-lot", "pk-lot-label", "pk-summary", "pk-summary-label"];
+const LAYERS = ["pk-cluster", "pk-cluster-count", "pk-dot", "pk-sign", "pk-summary", "pk-summary-label"];
 
 export class ParkingLens implements Lens {
   id = "parking" as const;
@@ -32,7 +32,7 @@ export class ParkingLens implements Lens {
   };
 
   constructor(private ctx: AppContext) {
-    ctx.onFeatureTap(["pk-lot", "pk-dot"], (f) => this.showLot(f));
+    ctx.onFeatureTap(["pk-sign", "pk-dot"], (f) => this.showLot(f));
     ctx.onFeatureTap(["pk-cluster", "pk-summary"], (f) => {
       const c = (f.geometry as GeoJSON.Point).coordinates as [number, number];
       ctx.map.easeTo({ center: c, zoom: Math.max(ctx.map.getZoom() + 2, 12) });
@@ -61,6 +61,10 @@ export class ParkingLens implements Lens {
     this.on[key] = !this.on[key];
     if (this.active) void this.refresh();
     this.ctx.refreshStrip("parking");
+  }
+
+  renderExtra(el: HTMLElement): void {
+    el.innerHTML = `<p class="legend"><span class="lg-lot">P</span>停車場 <span class="lg-curb">路</span>路邊 <b class="lg-ok">12</b>剩餘格數 <b class="lg-low">3</b>快滿 <b class="lg-full">滿</b> <b class="lg-old">?</b>資料超過 5 分鐘</p>`;
   }
 
   activate(): void {
@@ -112,12 +116,13 @@ export class ParkingLens implements Lens {
       const features: GeoJSON.Feature[] = [];
       for (const p of merged.catalog) {
         if (p.kind === "lot" ? !this.on.lots : !this.on.curb) continue;
-        features.push(feature(p.id, p.lng, p.lat, { kind: p.kind, label: "P", state: "none" }));
+        features.push(feature(p.id, p.lng, p.lat, { kind: p.kind, count: "", state: "none", available: -1 }));
       }
       for (const l of merged.live) {
         if (!this.on.lots) continue;
         const s = liveStatus(l, now);
-        features.push(feature(l.id, l.lng, l.lat, { kind: "live", label: s.label, state: s.state, available: l.available ?? -1 }));
+        // "?" means this lot reports counts but the latest one is too old to trust.
+        features.push(feature(l.id, l.lng, l.lat, { kind: "lot", count: s.label, state: s.state, available: l.available ?? -1 }));
       }
       setData(map, "pk", { type: "FeatureCollection", features });
       this.drawLayers();
@@ -198,45 +203,45 @@ export class ParkingLens implements Lens {
         paint: { "text-color": "#a7f3d0" },
       },
       {
+        // Individual marked bays: just dots, only when zoomed right in.
         id: "pk-dot",
         type: "circle",
         source: "pk",
-        filter: ["all", ["!", ["has", "point_count"]], ["in", ["get", "kind"], ["literal", ["curb", "space"]]]],
-        paint: { "circle-radius": 4, "circle-color": "#1f2b36", "circle-stroke-color": "#64748b", "circle-stroke-width": 1 },
+        minzoom: 16,
+        filter: ["all", ["!", ["has", "point_count"]], ["==", ["get", "kind"], "space"]],
+        paint: { "circle-radius": 3.5, "circle-color": "#1f2b36", "circle-stroke-color": "#94a3b8", "circle-stroke-width": 1 },
       },
       {
-        id: "pk-lot",
-        type: "circle",
+        // Square blue "P" = parking lot; round teal "路" = kerbside parking.
+        // The number beside it is free spaces right now.
+        id: "pk-sign",
+        type: "symbol",
         source: "pk",
-        filter: ["all", ["!", ["has", "point_count"]], ["in", ["get", "kind"], ["literal", ["lot", "live"]]]],
+        filter: ["all", ["!", ["has", "point_count"]], ["in", ["get", "kind"], ["literal", ["lot", "curb"]]]],
+        layout: {
+          "icon-image": ["match", ["get", "kind"], "curb", "p-curb", "p-lot"],
+          "icon-size": ["interpolate", ["linear"], ["zoom"], 12, 0.7, 16, 1],
+          "icon-allow-overlap": true,
+          "symbol-sort-key": ["case", ["==", ["get", "state"], "fresh"], 0, ["==", ["get", "state"], "full"], 1, 2],
+          "text-field": ["get", "count"],
+          "text-font": ["Noto Sans Bold"],
+          "text-size": ["interpolate", ["linear"], ["zoom"], 12, 12, 16, 14],
+          "text-anchor": "left",
+          "text-offset": [0.95, 0],
+          "text-optional": true,
+        },
         paint: {
-          "circle-radius": ["case", ["==", ["get", "kind"], "live"], 13, 10],
-          "circle-color": [
-            "case",
-            ["==", ["get", "state"], "full"],
-            "#7f1d1d",
-            ["==", ["get", "state"], "fresh"],
-            ["case", ["<=", ["get", "available"], 10], "#92400e", "#065f46"],
-            "#1e293b",
-          ],
-          "circle-stroke-color": [
+          "text-color": [
             "case",
             ["==", ["get", "state"], "full"],
             "#f87171",
             ["==", ["get", "state"], "fresh"],
-            ["case", ["<=", ["get", "available"], 10], "#fbbf24", "#34d399"],
-            "#64748b",
+            ["case", ["<=", ["get", "available"], 10], "#fbbf24", "#4ade80"],
+            "#94a3b8",
           ],
-          "circle-stroke-width": 1.5,
+          "text-halo-color": "#04080d",
+          "text-halo-width": 2,
         },
-      },
-      {
-        id: "pk-lot-label",
-        type: "symbol",
-        source: "pk",
-        filter: ["all", ["!", ["has", "point_count"]], ["in", ["get", "kind"], ["literal", ["lot", "live"]]]],
-        layout: { "text-field": ["get", "label"], "text-font": ["Noto Sans Bold"], "text-size": 11, "text-allow-overlap": true },
-        paint: { "text-color": "#f1f5f9" },
       },
     ]);
   }

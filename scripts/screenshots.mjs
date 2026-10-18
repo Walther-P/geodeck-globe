@@ -73,6 +73,25 @@ const fixtures = {
     tle("ISS (ZARYA)", "25544", "51.6416", "247.4627", "325.0288", "15.721253") +
     tle("CSS (TIANHE)", "48274", "41.4700", "120.1000", "100.0000", "15.600000") +
     tle("HST", "20580", "28.4700", "300.1000", "200.0000", "15.100000"),
+  "tdx.transportdata.tw": (url) => {
+    const path = new URL(url).pathname;
+    const lots = [
+      ["A1", "府前路停車場", 22.9935, 120.2032, 42, 0],
+      ["B2", "中正立體停車場", 22.9905, 120.2068, 6, 0],
+      ["C3", "民生地下停車場", 22.9952, 120.2071, 0, 0],
+      ["D4", "西門停車場", 22.9898, 120.2015, 15, 20],
+    ];
+    const iso = (minsAgo) => new Date(now - minsAgo * 60000).toISOString();
+    if (path.endsWith("/token")) return { access_token: "demo", expires_in: 86400 };
+    if (path.includes("/CarPark/City/Tainan"))
+      return { CarParks: lots.map(([id, name, lat, lng]) => ({ CarParkID: id, CarParkName: { Zh_tw: name }, CarParkPosition: { PositionLat: lat, PositionLon: lng } })) };
+    if (path.includes("/ParkingAvailability/City/Tainan"))
+      return {
+        UpdateTime: iso(1),
+        ParkingAvailabilities: lots.map(([id, , , , free, age]) => ({ CarParkID: id, TotalSpaces: 120, AvailableSpaces: free, FullStatus: free === 0 ? 1 : 0, ServiceStatus: 1, DataCollectTime: iso(age + 1) })),
+      };
+    return {};
+  },
   "photon.komoot.io": () => ({ features: [{ geometry: { coordinates: [120.2049, 22.9908] }, properties: { name: "赤崁樓", city: "臺南市", district: "中西區", country: "臺灣", countrycode: "TW" } }] }),
 };
 
@@ -80,7 +99,7 @@ const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PAT
 const shots = [
   { name: "phone-globe", w: 393, h: 852, view: { lng: 121, lat: 23.6, zoom: 1.8 }, lenses: ["sky"] },
   { name: "phone-taiwan-sky", w: 393, h: 852, view: { lng: 121, lat: 23.8, zoom: 6.6 }, lenses: ["weather", "sky"], tap: "now" },
-  { name: "phone-tainan-parking", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15.2 }, lenses: ["traffic", "parking"], healthy: true },
+  { name: "phone-tainan-parking", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15.6 }, lenses: ["traffic", "parking"], healthy: true, tdx: true },
   { name: "phone-tainan-traffic", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15.2 }, lenses: ["parking", "traffic"], healthy: true },
   { name: "phone-locate", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15 }, lenses: ["parking"], locate: true },
   {
@@ -107,7 +126,8 @@ for (const s of shots) {
     geolocation: { latitude: 22.9925, longitude: 120.2048, accuracy: 25 },
     permissions: ["geolocation", "accelerometer", "gyroscope", "magnetometer"],
   });
-  await ctx.addInitScript(({ view, lenses, fx }) => {
+  await ctx.addInitScript(({ view, lenses, fx, tdx }) => {
+    if (tdx) localStorage.setItem("gdg.keys.v1", JSON.stringify({ tdxId: "demo", tdxSecret: "demo", cwa: "", google: "" }));
     localStorage.setItem("gdg.view.v1", JSON.stringify(view));
     localStorage.setItem("gdg.lenses.v1", JSON.stringify(lenses));
     if (fx) localStorage.setItem("gdg.fx.v1", JSON.stringify(fx));
@@ -118,7 +138,7 @@ for (const s of shots) {
     const host = new URL(route.request().url()).hostname;
     const make = fixtures[host];
     if (!make) return route.abort();
-    const body = make();
+    const body = make(route.request().url());
     await route.fulfill({ status: 200, contentType: typeof body === "string" ? "text/plain" : "application/json", headers: { "access-control-allow-origin": "*" }, body: typeof body === "string" ? body : JSON.stringify(body) });
   });
   const page = await ctx.newPage();

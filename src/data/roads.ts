@@ -7,7 +7,7 @@ import type { Camera } from "./tdx";
 interface CameraCatalog {
   updatedAt: string;
   catalog: string;
-  cameras: Array<{ id: string; lat: number; lng: number; name: string; image: string | null; page: string | null }>;
+  cameras: Array<{ id: string; lat: number; lng: number; name: string; image: string | null; mirror?: string | null; page: string | null }>;
 }
 
 let cameraCatalog: Promise<CameraCatalog> | null = null;
@@ -19,7 +19,7 @@ export function bundledCameras(): Promise<{ updatedAt: string; cameras: Camera[]
   });
   return cameraCatalog.then((c) => ({
     updatedAt: c.updatedAt,
-    cameras: c.cameras.map((x) => ({ ...x, source: x.image ? "公路主管機關" : "外部影像目錄" })),
+    cameras: c.cameras.map((x) => ({ ...x, source: x.image ? "公路主管機關" : "twipcam 轉載的政府公開影像" })),
   }));
 }
 

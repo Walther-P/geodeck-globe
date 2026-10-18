@@ -253,7 +253,7 @@ const now = new NowBar(
 
 const search = setupSearch({ map, choose: (p) => showPlace(p), openSettings: (section) => ctx.openSettings(section) });
 
-// Android "share to GeoDeck" (manifest share_target) and ?q= links land here.
+// Android "share to 百眼" (manifest share_target) and ?q= links land here.
 const shared = new URLSearchParams(location.search);
 const sharedText = [shared.get("title"), shared.get("text"), shared.get("url"), shared.get("q")].filter(Boolean).join("\n");
 if (sharedText) {

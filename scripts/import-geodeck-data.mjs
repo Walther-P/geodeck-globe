@@ -3,9 +3,9 @@
 //
 //   node scripts/import-geodeck-data.mjs /path/to/KTAK-DEV/geodeck/data
 //
-// Camera images are kept only when the government operator hosts them
-// (freeway.gov.tw, thb.gov.tw); entries that point at a third-party mirror
-// keep their location and a link to that page, but no hotlinked image.
+// Camera images: `image` is the government operator's own feed
+// (freeway.gov.tw, thb.gov.tw); other entries keep the third-party mirror's
+// still snapshot as `mirror`, loaded only when someone opens that camera.
 
 import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
@@ -46,14 +46,16 @@ const cams = JSON.parse(gunzipSync(readFileSync(join(src, "cameras-tw.json.gz"))
 let official = 0;
 const cameras = cams.cameras.map((c) => {
   let image = null;
+  let mirror = null;
   try {
     const u = new URL(c.image);
     if (u.protocol === "https:" && OFFICIAL.test(u.hostname)) image = u.toString();
+    else if (u.protocol === "https:") mirror = u.toString();
   } catch {
     /* no image */
   }
   if (image) official += 1;
-  return { id: c.id, lat: c.lat, lng: c.lng, name: c.name, image, page: c.source ?? null };
+  return { id: c.id, lat: c.lat, lng: c.lng, name: c.name, image, mirror, page: c.source ?? null };
 });
 writeFileSync(
   join(out, "cameras-tw.json"),

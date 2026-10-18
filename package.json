@@ -1,7 +1,7 @@
 {
   "name": "geodeck-globe",
-  "version": "0.1.0",
-  "description": "手機優先的 3D 地球情報地圖：天氣、交通、停車、天空即時資訊（台灣優先）",
+  "version": "0.2.0",
+  "description": "百眼：手機優先的 3D 地球情報地圖：天氣、交通、停車、天空即時資訊（台灣優先）",
   "type": "module",
   "private": true,
   "scripts": {

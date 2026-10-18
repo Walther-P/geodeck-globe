@@ -1,5 +1,4 @@
-import { googleSearch } from "../data/google";
-import { hasGoogle } from "../data/keys";
+import { googleAvailable, googleSearch } from "../data/google";
 import { extractUrl, resolveSharedPlace } from "../data/maplinks";
 import { googleSearchUrl, searchPlaces, type Place } from "../data/places";
 import { escapeHtml as esc, type Point } from "../lib/util";
@@ -37,7 +36,7 @@ export function setupSearch({ map, choose, openSettings }: SearchDeps): { runSha
     box.innerHTML = html;
   };
   const googleTip = () =>
-    hasGoogle()
+    googleAvailable()
       ? ""
       : `<button class="tip" data-action="google-key">想跟 Google 地圖找到一樣的店家？<small>到設定加入你自己的 Google 搜尋金鑰（選填）</small></button>`;
 
@@ -82,7 +81,7 @@ export function setupSearch({ map, choose, openSettings }: SearchDeps): { runSha
     const mine = (controller = new AbortController());
     show(`<p>搜尋中…</p>`);
     try {
-      const r = await searchPlaces(q, near(), mine.signal, hasGoogle() ? googleSearch : undefined);
+      const r = await searchPlaces(q, near(), mine.signal, googleAvailable() ? googleSearch : undefined);
       if (mine.signal.aborted) return;
       render(q, r.places, [note, r.googleError ? `Google 搜尋沒有結果：${r.googleError}` : ""].filter(Boolean).join(" "));
     } catch (e) {

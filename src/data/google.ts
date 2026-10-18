@@ -1,7 +1,7 @@
-// Optional Google place search with the visitor's own Maps Platform key, so
-// "某某餐廳" finds the same places Google Maps does. Uses the Maps JavaScript
-// API's Places library (made for browsers); no map is drawn, so only the
-// search itself is billed to the key owner.
+// Google place search, so "某某餐廳" finds the same places Google Maps does,
+// with the site owner's key (GOOGLE_MAPS_KEY at build) or a visitor's own.
+// Uses the Maps JavaScript API's Places library (made for browsers); no map
+// is drawn, so only the search itself is billed to the key owner.
 
 import { FeedError } from "../lib/net";
 import type { Point } from "../lib/util";
@@ -27,6 +27,12 @@ interface PlacesLibrary {
 interface GoogleMaps {
   maps: { importLibrary(name: "places"): Promise<PlacesLibrary> };
 }
+
+/** The site owner's key, baked in at build time; a visitor's own key wins. */
+const SITE_KEY = (import.meta.env.VITE_GOOGLE_MAPS_KEY ?? "").trim();
+
+export const siteGoogleKey = () => !!SITE_KEY;
+export const googleAvailable = () => !!(keys().google || SITE_KEY);
 
 let loading: { key: string; ready: Promise<GoogleMaps> } | null = null;
 let authFailed = false;
@@ -62,7 +68,7 @@ function load(key: string): Promise<GoogleMaps> {
 }
 
 export async function googleSearch(text: string, near: Point | null): Promise<Place[]> {
-  const key = keys().google;
+  const key = keys().google || SITE_KEY;
   if (!key) return [];
   const google = await load(key);
   const { Place: GPlace } = await google.maps.importLibrary("places");

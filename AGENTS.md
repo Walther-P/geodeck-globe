@@ -4,7 +4,7 @@
 
 ## 專案概要
 
-GeoDeck Globe：手機優先的 3D 地球情報地圖（Vite + TypeScript + MapLibre GL JS v6 地球投影），
+百眼（repo／Worker 名稱仍是 geodeck-globe）：手機優先的 3D 地球情報地圖（Vite + TypeScript + MapLibre GL JS v6 地球投影），
 部署在 Cloudflare Worker `geodeck-globe`（`worker/` 提供靜態檔與 `/relay` 轉送）。
 目標是「上帝之眼」的視覺與即時感，加上每天用得到的天氣、交通、停車。
 
@@ -14,7 +14,9 @@ GeoDeck Globe：手機優先的 3D 地球情報地圖（Vite + TypeScript + MapL
 - `src/ui/`：此刻列、地點卡、搜尋、收藏、設定
 - `worker/relay.ts`：轉送白名單（純函式，有測試）
 - `worker/resolve.ts` + `/api/resolve`：追 Google 地圖分享短網址到實際地點；`src/data/maplinks.ts` 解析各種地圖連結
-- `src/data/google.ts`：選填的 Google 地點搜尋（使用者自己的金鑰，存在 `keys().google`）
+- `src/data/google.ts`：Google 地點搜尋。站長金鑰在建置時由 `GOOGLE_MAPS_KEY` secret 注入
+  （`VITE_GOOGLE_MAPS_KEY`，瀏覽器金鑰，必須限制網址）；使用者也可在設定填自己的（優先使用）
+- `worker/camera.ts` + `/api/cam`：只限 `*.gov.tw` 的 http 影像串流轉接（https 頁面不能載入 http 影像）
 - `src/ui/locate.ts`：定位藍點、精度圈、指南針扇形（iOS 要在點擊當下要求方向權限）
 
 ## 常用指令
@@ -33,14 +35,17 @@ GeoDeck Globe：手機優先的 3D 地球情報地圖（Vite + TypeScript + MapL
 3. **資料誠實**：顯示來源與時間；沒有時間的即時數字不當成即時；即時車位超過 5 分鐘顯示「?」
    （`LIVE_MAX_AGE_MS`）；缺值顯示「—」或「未知」，不要當成 0 或「沒有」。
 4. **不要用會計費的服務**（Google Places／Routes／3D Tiles 等）當預設功能；要加先問擁有者。
-   Google 地點搜尋只在使用者自己填了金鑰時才載入。
+   擁有者已同意 Google 地點搜尋用站長金鑰（2026-10-18），只在有人搜尋時才載入，不畫 Google 地圖。
 5. **手機優先**：改介面後跑 `npm run screenshots`，看 393×852 直向與 852×393 橫向，按鈕不能互相遮住。
    觸控目標至少 40px；輸入框字級 16px（避免 iOS 放大）。
 6. **效能**：手機上不要每格重建大量圖層；資料更新用 `setData`。Starlink 這類數千點的圖層要降頻。
 7. **安全**：來自資料來源的字串一律 `escapeHtml`；網址一律經過 `safeUrl`。
 8. 打包的資料（`public/data/`）要能用 `scripts/` 裡的腳本重建，並保留授權檔（停車目錄含 ODbL 資料）。
+9. 停車標記：方形藍底 P＝停車場、圓形綠底「路」＝路邊；旁邊數字＝即時剩餘格數（`pk-sign` 圖層）。
+   沒有即時來源的停車場不顯示數字，不要拿總車位冒充剩餘格數。
 
 ## 部署
 
 - push 到 `main` 會自動部署（需 `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID` secrets）。
-- 擁有者沒同意前不要直接改 `main`；改動先放分支。
+- 擁有者在對話中要求的修改可以直接推 `main`（會自動部署，部署前有煙霧測試）；
+  大幅改版或擁有者沒提過的方向，先放分支並說明。

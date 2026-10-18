@@ -7,6 +7,8 @@
 #   CLOUDFLARE_ACCOUNT_ID  the account that owns the workers.dev subdomain
 # Optional, only for the live data probe (never bundled into the site):
 #   PROBE_TDX_ID, PROBE_TDX_SECRET, PROBE_CWA_KEY
+# Optional, bundled into the page for everyone's Google place search:
+#   GOOGLE_MAPS_KEY  (a browser key restricted to this site's URL)
 name: Build and deploy
 
 on:
@@ -40,6 +42,9 @@ jobs:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
       - run: npm test
       - run: npm run build
+        env:
+          # A browser key (it ships in the page); restrict it to this site's URL.
+          VITE_GOOGLE_MAPS_KEY: ${{ secrets.GOOGLE_MAPS_KEY }}
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       # Opens the built app at phone size with every feed faked and fails the
@@ -85,6 +90,9 @@ jobs:
         continue-on-error: true
         env:
           TEST_URL: ${{ steps.deploy.outputs.url }}/
+          PROBE_TDX_ID: ${{ secrets.PROBE_TDX_ID }}
+          PROBE_TDX_SECRET: ${{ secrets.PROBE_TDX_SECRET }}
+          PROBE_CWA_KEY: ${{ secrets.PROBE_CWA_KEY }}
         run: node scripts/live-probe.mjs
       - uses: actions/upload-artifact@v4
         if: always()
