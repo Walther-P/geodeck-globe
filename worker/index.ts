@@ -7,7 +7,7 @@ interface Env {
 }
 
 const FORWARDED_REQUEST_HEADERS = ["accept", "authorization", "content-type"];
-const FORWARDED_RESPONSE_HEADERS = ["content-type", "last-modified", "etag"];
+const FORWARDED_RESPONSE_HEADERS = ["content-type", "last-modified", "etag", "retry-after"];
 
 function fail(status: number, message: string): Response {
   return new Response(JSON.stringify({ error: message }), {

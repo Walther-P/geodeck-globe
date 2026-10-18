@@ -67,11 +67,13 @@ describe("parking honesty", () => {
     expect(liveStatus({ available: 3, updatedAt: now + 10 * 60000, full: false }, now).label).toBe("?");
   });
 
-  it("drops a catalog lot that TDX already lists at the same spot", () => {
+  it("drops a catalog entry that TDX already lists at the same spot, kind for kind", () => {
     const lot = (id: string, lat: number, lng: number, kind: CatalogLot["kind"] = "lot"): CatalogLot => ({ id, lat, lng, name: id, kind, total: null, rate: null, hours: null, address: "", access: null, source: "osm" });
-    const live = [{ id: "tdx-1", lat: 22.99, lng: 120.2 } as LiveLot];
+    const live = [{ id: "tdx-1", kind: "lot", lat: 22.99, lng: 120.2 } as LiveLot];
     const merged = mergeLots([lot("same", 22.9902, 120.2001), lot("far", 22.995, 120.2), lot("curb", 22.99, 120.2, "curb")], live);
     expect(merged.catalog.map((l) => l.id)).toEqual(["far", "curb"]);
+    const curbs = [{ id: "tdx-c", kind: "curb", lat: 22.99, lng: 120.2 } as LiveLot];
+    expect(mergeLots([lot("lot", 22.99, 120.2), lot("curb", 22.9901, 120.2, "curb"), lot("bay", 22.99, 120.2, "space")], curbs).catalog.map((l) => l.id)).toEqual(["lot", "bay"]);
   });
 });
 

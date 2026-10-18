@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { intensityRank, parseCyclones, parseQuakes, parseWarnings } from "../src/data/cwa";
 import { cloudLayer, flightQuery, latestDomainTime, parseAdsb, parseOpenSky, parseTle, parseUsgs, satPosition, settledTime } from "../src/data/sky";
-import { normalizeBuses, normalizeCctv, normalizeLiveLots } from "../src/data/tdx";
+import { normalizeBuses, normalizeCctv, normalizeCurbs, normalizeLiveLots, segmentPoint } from "../src/data/tdx";
 import { parseForecast, rainOutlook } from "../src/data/weather";
 
 const T0 = Date.parse("2026-10-18T08:00:00Z");
@@ -39,6 +39,30 @@ describe("TDX parking", () => {
     expect(a.updatedAt).toBe(Date.parse("2026-10-18T07:58:30Z"));
     const b = lots.find((l) => l.id.endsWith("B2"))!;
     expect(b.available).toBeNull();
+  });
+
+  it("reads kerbside segments that report counts, whatever the row array is called", () => {
+    const segments = {
+      ParkingSegments: [
+        { ParkingSegmentID: "S1", ParkingSegmentName: { Zh_tw: "民族路二段" }, ParkingSegmentPosition: { PositionLat: 22.995, PositionLon: 120.203 }, FareDescription: "20元/時" },
+        { ParkingSegmentID: "S2", ParkingSegmentName: { Zh_tw: "永福路" }, ParkingSegmentPosition: "LINESTRING(120.200 22.990, 120.201 22.991, 120.202 22.992)" },
+        { ParkingSegmentID: "S3", ParkingSegmentName: { Zh_tw: "沒有動態" }, ParkingSegmentPosition: { PositionLat: 22.99, PositionLon: 120.2 } },
+      ],
+    };
+    const avail = {
+      UpdateTime: "2026-10-18T15:59:00+08:00",
+      CurbParkingSegmentAvailabilities: [
+        { ParkingSegmentID: "S1", TotalSpaces: 24, AvailableSpaces: 5, DataCollectTime: "2026-10-18T15:58:00+08:00" },
+        { ParkingSegmentID: "S2", TotalSpaces: 10, AvailableSpaces: 0, FullStatus: 1 },
+      ],
+    };
+    const curbs = normalizeCurbs(segments, avail, "Tainan");
+    expect(curbs.map((c) => c.name)).toEqual(["民族路二段", "永福路"]);
+    expect(curbs[0]).toMatchObject({ kind: "curb", total: 24, available: 5, fare: "20元/時", updatedAt: Date.parse("2026-10-18T07:58:00Z") });
+    expect(curbs[1]).toMatchObject({ lat: 22.991, lng: 120.201, available: 0, full: true, updatedAt: Date.parse("2026-10-18T07:59:00Z") });
+    expect(normalizeCurbs(segments, { ParkingSegmentAvailabilities: avail.CurbParkingSegmentAvailabilities }, "Tainan")).toHaveLength(2);
+    expect(normalizeCurbs(segments, {}, "Tainan")).toEqual([]);
+    expect(segmentPoint(null)).toBeNull();
   });
 
   it("reads CCTV and drops rows without a position", () => {

@@ -90,6 +90,18 @@ const fixtures = {
         UpdateTime: iso(1),
         ParkingAvailabilities: lots.map(([id, , , , free, age]) => ({ CarParkID: id, TotalSpaces: 120, AvailableSpaces: free, FullStatus: free === 0 ? 1 : 0, ServiceStatus: 1, DataCollectTime: iso(age + 1) })),
       };
+    const curbs = [
+      ["S1", "民生路一段", 22.9918, 120.2052, 5, 0],
+      ["S2", "永福路二段", 22.9932, 120.2009, 0, 0],
+      ["S3", "忠義路二段", 22.9946, 120.2045, 14, 0],
+    ];
+    if (path.includes("/ParkingSegment/City/Tainan"))
+      return { ParkingSegments: curbs.map(([id, name, lat, lng]) => ({ ParkingSegmentID: id, ParkingSegmentName: { Zh_tw: name }, ParkingSegmentPosition: { PositionLat: lat, PositionLon: lng } })) };
+    if (path.includes("/ParkingSegmentAvailability/City/Tainan"))
+      return {
+        UpdateTime: iso(1),
+        CurbParkingSegmentAvailabilities: curbs.map(([id, , , , free, age]) => ({ ParkingSegmentID: id, TotalSpaces: 20, AvailableSpaces: free, FullStatus: free === 0 ? 1 : 0, ServiceStatus: 1, DataCollectTime: iso(age + 1) })),
+      };
     return {};
   },
   "photon.komoot.io": () => ({ features: [{ geometry: { coordinates: [120.2049, 22.9908] }, properties: { name: "赤崁樓", city: "臺南市", district: "中西區", country: "臺灣", countrycode: "TW" } }] }),

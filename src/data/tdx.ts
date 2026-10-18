@@ -51,7 +51,7 @@ export function forgetTdxToken(): void {
 
 // TDX's free tier allows only a few calls per second per key, and opening a
 // lens can ask for half a dozen feeds at once: send them one at a time.
-const SPACING_MS = 250;
+const SPACING_MS = 500;
 let queue: Promise<unknown> = Promise.resolve();
 let lastCall = 0;
 
@@ -88,13 +88,38 @@ export async function tdxGet<T>(path: string, params: Record<string, string> = {
       forgetTdxToken();
       return attempt();
     }
-    // Over the per-second limit: wait a moment and try once more.
+    // Over the rate limit: wait a moment and try once more.
     if (e instanceof FeedError && e.status === 429 && !signal?.aborted) {
-      await new Promise((r) => setTimeout(r, 1500));
-      return attempt();
+      await new Promise((r) => setTimeout(r, 3000));
+      return attempt().catch((again: unknown) => {
+        throw again instanceof FeedError && again.status === 429 ? new FeedError("TDX 呼叫太頻繁，稍後自動再試", 429) : again;
+      });
     }
     throw e;
   }
+}
+
+// Positions and names barely change while counts change every minute, so the
+// static lists are kept for hours: a refresh then costs one call per feed.
+const STATIC_MS = 6 * 3600000;
+const staticLists = new Map<string, { at: number; data: Promise<unknown> }>();
+
+function tdxStatic<T>(path: string, params: Record<string, string> = {}): Promise<T> {
+  const key = `${path}?${new URLSearchParams(params)}`;
+  const hit = staticLists.get(key);
+  if (hit && Date.now() - hit.at < STATIC_MS) return hit.data as Promise<T>;
+  const data = tdxGet<T>(path, params);
+  staticLists.set(key, { at: Date.now(), data });
+  data.catch(() => staticLists.delete(key));
+  return data;
+}
+
+/** A feed's row array, whatever this version of the feed calls it ("…Availabilities"). */
+function rowsOf<T>(data: unknown, suffix: string): T[] {
+  if (Array.isArray(data)) return data as T[];
+  if (!data || typeof data !== "object") return [];
+  for (const [k, v] of Object.entries(data)) if (k.endsWith(suffix) && Array.isArray(v)) return v as T[];
+  return [];
 }
 
 const zh = (v: unknown): string => {
@@ -107,6 +132,8 @@ const zh = (v: unknown): string => {
 
 export interface LiveLot {
   id: string;
+  /** "curb" = a kerbside segment (路邊), counted as a whole. */
+  kind: "lot" | "curb";
   name: string;
   lat: number;
   lng: number;
@@ -163,6 +190,7 @@ export function normalizeLiveLots(
     const available = count(car?.AvailableSpaces ?? a?.AvailableSpaces);
     out.push({
       id: `tdx-${city}-${p.CarParkID}`,
+      kind: "lot",
       name: zh(p.CarParkName) || "停車場",
       ...pos,
       total: count(car?.NumberOfSpaces ?? a?.TotalSpaces),
@@ -181,10 +209,75 @@ export function normalizeLiveLots(
 
 export async function liveLots(city: string, signal?: AbortSignal): Promise<LiveLot[]> {
   const [parks, avail] = await Promise.all([
-    tdxGet<{ CarParks?: TdxCarPark[] }>(`/api/basic/v1/Parking/OffStreet/CarPark/City/${city}`, {}, signal),
+    tdxStatic<{ CarParks?: TdxCarPark[] }>(`/api/basic/v1/Parking/OffStreet/CarPark/City/${city}`),
     tdxGet<{ ParkingAvailabilities?: TdxAvailability[] }>(`/api/basic/v1/Parking/OffStreet/ParkingAvailability/City/${city}`, {}, signal),
   ]);
   return normalizeLiveLots(parks, avail, city);
+}
+
+// ---- Kerbside (路邊) segments ----------------------------------------------
+
+interface TdxSegment {
+  ParkingSegmentID?: string;
+  ParkingSegmentName?: unknown;
+  ParkingSegmentPosition?: unknown;
+  FareDescription?: string;
+}
+
+type TdxSegmentAvailability = TdxAvailability & { ParkingSegmentID?: string; ParkingSegmentName?: unknown };
+
+/** A segment's position: a PointType, or the middle vertex of a WKT line ("lng lat, …"). */
+export function segmentPoint(v: unknown): { lat: number; lng: number } | null {
+  if (typeof v === "string") {
+    const pairs = [...v.matchAll(/(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/g)];
+    const mid = pairs[Math.floor(pairs.length / 2)];
+    return mid ? point(mid[2], mid[1]) : null;
+  }
+  const o = v as { PositionLat?: number; PositionLon?: number } | null;
+  return point(o?.PositionLat, o?.PositionLon);
+}
+
+/** Only segments the city reports counts for; the bundled catalog has the rest. */
+export function normalizeCurbs(segments: unknown, availability: unknown, city: string): LiveLot[] {
+  const feedTime = Array.isArray(availability) ? null : parseTime((availability as { UpdateTime?: string } | null)?.UpdateTime);
+  const byId = new Map(
+    rowsOf<TdxSegmentAvailability>(availability, "Availabilities")
+      .filter((r) => r.ParkingSegmentID)
+      .map((r) => [r.ParkingSegmentID!, r]),
+  );
+  const out: LiveLot[] = [];
+  for (const s of rowsOf<TdxSegment>(segments, "Segments")) {
+    const a = s.ParkingSegmentID ? byId.get(s.ParkingSegmentID) : undefined;
+    const pos = segmentPoint(s.ParkingSegmentPosition);
+    if (!a || !pos) continue;
+    const car = a.Availabilities?.find((x) => x.SpaceType === 1);
+    const available = count(car?.AvailableSpaces ?? a.AvailableSpaces);
+    out.push({
+      id: `tdx-${city}-curb-${s.ParkingSegmentID}`,
+      kind: "curb",
+      name: zh(s.ParkingSegmentName) || zh(a.ParkingSegmentName) || "路邊停車",
+      ...pos,
+      total: count(car?.NumberOfSpaces ?? a.TotalSpaces),
+      available: a.ServiceStatus === 0 ? null : available,
+      updatedAt: parseTime(a.DataCollectTime) ?? feedTime,
+      full: a.FullStatus === 1 || available === 0,
+      address: "",
+      fare: s.FareDescription ?? "",
+      city,
+      source: "tdx",
+    });
+  }
+  return out;
+}
+
+export async function liveCurbs(city: string, signal?: AbortSignal): Promise<LiveLot[]> {
+  const [segments, avail] = await Promise.all([
+    tdxStatic(`/api/basic/v1/Parking/OnStreet/ParkingSegment/City/${city}`, {
+      $select: "ParkingSegmentID,ParkingSegmentName,ParkingSegmentPosition,FareDescription",
+    }),
+    tdxGet(`/api/basic/v1/Parking/OnStreet/ParkingSegmentAvailability/City/${city}`, {}, signal),
+  ]);
+  return normalizeCurbs(segments, avail, city);
 }
 
 // ---- CCTV ----------------------------------------------------------------

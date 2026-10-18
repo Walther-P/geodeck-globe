@@ -93,8 +93,9 @@ export function liveStatus(lot: Pick<LiveLot, "available" | "updatedAt" | "full"
 }
 
 /**
- * Live TDX lots replace catalog lots that sit within 60 m (the same lot listed
- * by both the city catalog and TDX); everything else stays.
+ * Live TDX lots and kerbside segments replace catalog entries of the same kind
+ * within 60 m (the same place listed by both the city catalog and TDX);
+ * everything else stays.
  */
 export function mergeLots(catalog: CatalogLot[], live: LiveLot[]): { catalog: CatalogLot[]; live: LiveLot[] } {
   if (!live.length) return { catalog, live };
@@ -108,10 +109,10 @@ export function mergeLots(catalog: CatalogLot[], live: LiveLot[]): { catalog: Ca
     const la = Math.floor(p.lat * 500);
     const ln = Math.floor(p.lng * 500);
     for (let i = -1; i <= 1; i++)
-      for (let j = -1; j <= 1; j++) for (const l of grid.get(`${la + i}:${ln + j}`) ?? []) if (distance(p, l) <= 60) return true;
+      for (let j = -1; j <= 1; j++) for (const l of grid.get(`${la + i}:${ln + j}`) ?? []) if (l.kind === p.kind && distance(p, l) <= 60) return true;
     return false;
   };
-  return { catalog: catalog.filter((p) => p.kind !== "lot" || !near(p)), live };
+  return { catalog: catalog.filter((p) => p.kind === "space" || !near(p)), live };
 }
 
 export function kindLabel(kind: CatalogLot["kind"]): string {

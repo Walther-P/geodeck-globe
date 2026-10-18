@@ -6,7 +6,8 @@ import { catalogLots, catalogSummary, kindLabel, liveStatus, mergeLots, type Cat
 import { parkedCar, setParkedCar } from "../data/places";
 import { parkingCameraLinks } from "../data/roads";
 import { citiesAt } from "../data/taiwan";
-import { liveLots, type LiveLot } from "../data/tdx";
+import { liveCurbs, liveLots, type LiveLot } from "../data/tdx";
+import { FeedError } from "../lib/net";
 import { ago, dateTime } from "../lib/time";
 import { escapeHtml as esc, formatCoord, safeUrl } from "../lib/util";
 import { EMPTY, addLayers, hideLayers, setData } from "../map/globe";
@@ -19,7 +20,10 @@ export class ParkingLens implements Lens {
   title = "停車";
   private on = { lots: true, curb: true, live: true, car: true };
   private catalog: CatalogLot[] = [];
+  /** Keyed "lot:Tainan" / "curb:Tainan". */
   private live = new Map<string, { at: number; lots: LiveLot[] }>();
+  /** Cities that publish no kerbside counts at all. */
+  private noCurbFeed = new Set<string>();
   private liveErrors: string[] = [];
   private stops: Array<() => void> = [];
   private active = false;
@@ -109,7 +113,7 @@ export class ParkingLens implements Lens {
       }
       setData(map, "pk-summary", EMPTY);
       this.catalog = await catalogLots(view);
-      const live = this.on.live && hasTdx() ? await this.liveFor(view, refreshLive) : [];
+      const live = this.on.live && hasTdx() ? await this.liveFor(view, zoom, refreshLive) : [];
       if (seq !== this.seq) return;
       const merged = mergeLots(this.catalog, live);
       const now = Date.now();
@@ -119,17 +123,22 @@ export class ParkingLens implements Lens {
         features.push(feature(p.id, p.lng, p.lat, { kind: p.kind, count: "", state: "none", available: -1 }));
       }
       for (const l of merged.live) {
-        if (!this.on.lots) continue;
+        if (l.kind === "lot" ? !this.on.lots : !this.on.curb) continue;
         const s = liveStatus(l, now);
-        // "?" means this lot reports counts but the latest one is too old to trust.
-        features.push(feature(l.id, l.lng, l.lat, { kind: "lot", count: s.label, state: s.state, available: l.available ?? -1 }));
+        // "?" means this place reports counts but the latest one is too old to trust.
+        features.push(feature(l.id, l.lng, l.lat, { kind: l.kind, count: s.label, state: s.state, available: l.available ?? -1 }));
       }
       setData(map, "pk", { type: "FeatureCollection", features });
       this.drawLayers();
-      const fresh = merged.live.filter((l) => liveStatus(l, now).state === "fresh" || liveStatus(l, now).state === "full").length;
       const parts = [`${features.length.toLocaleString()} 處`];
-      if (hasTdx() && this.on.live) parts.push(merged.live.length ? `即時 ${fresh}/${merged.live.length} 場有 5 分鐘內資料` : "此區沒有 TDX 即時車位");
-      else parts.push("即時車位需 TDX 金鑰");
+      if (hasTdx() && this.on.live) {
+        const counted = (["lot", "curb"] as const).flatMap((kind) => {
+          const rows = merged.live.filter((l) => l.kind === kind);
+          const fresh = rows.filter((l) => ["fresh", "full"].includes(liveStatus(l, now).state)).length;
+          return rows.length ? [`${kind === "lot" ? "停車場" : "路段"} ${fresh}/${rows.length}`] : [];
+        });
+        parts.push(counted.length ? `即時：${counted.join("、")} 有 5 分鐘內資料` : "此區沒有 TDX 即時車位");
+      } else parts.push("即時車位需 TDX 金鑰");
       if (this.liveErrors.length) parts.push(this.liveErrors.join("；"));
       this.ctx.status("parking", parts.join(" · "), this.liveErrors.length ? "warn" : undefined);
     } catch (e) {
@@ -137,25 +146,35 @@ export class ParkingLens implements Lens {
     }
   }
 
-  private async liveFor(view: ReturnType<typeof viewBounds>, force: boolean): Promise<LiveLot[]> {
+  private async liveFor(view: ReturnType<typeof viewBounds>, zoom: number, force: boolean): Promise<LiveLot[]> {
     const center = { lat: (view.north + view.south) / 2, lng: (view.east + view.west) / 2 };
-    const cities = citiesAt(center).slice(0, 2);
+    const feeds: Array<{ key: string; code: string; name: string; kind: LiveLot["kind"] }> = [];
+    for (const c of citiesAt(center).slice(0, 2)) {
+      if (this.on.lots) feeds.push({ key: `lot:${c.code}`, code: c.code, name: c.name, kind: "lot" });
+      // Kerbside counts only help street by street, and each city is one more TDX call.
+      if (this.on.curb && zoom >= 13 && !this.noCurbFeed.has(c.code)) feeds.push({ key: `curb:${c.code}`, code: c.code, name: c.name, kind: "curb" });
+    }
     this.liveErrors = [];
     const out: LiveLot[] = [];
     await Promise.all(
-      cities.map(async (c) => {
-        const cached = this.live.get(c.code);
+      feeds.map(async (f) => {
+        const cached = this.live.get(f.key);
         if (cached && !force && Date.now() - cached.at < 60000) {
           out.push(...cached.lots);
           return;
         }
         try {
-          const lots = await liveLots(c.code);
-          this.live.set(c.code, { at: Date.now(), lots });
+          const lots = await (f.kind === "lot" ? liveLots : liveCurbs)(f.code);
+          this.live.set(f.key, { at: Date.now(), lots });
           out.push(...lots);
         } catch (e) {
+          // Not every city publishes kerbside counts: leave those quietly to the catalog.
+          if (f.kind === "curb" && e instanceof FeedError && (e.status === 404 || e.status === 400)) {
+            this.noCurbFeed.add(f.code);
+            return;
+          }
           if (cached) out.push(...cached.lots);
-          this.liveErrors.push(`${c.name}即時車位：${(e as Error).message}`);
+          this.liveErrors.push(`${f.name}${f.kind === "lot" ? "停車場" : "路邊"}即時：${(e as Error).message}`);
         }
       }),
     );
@@ -255,6 +274,7 @@ export class ParkingLens implements Lens {
     const pos = live ?? lot!;
     const status = live ? liveStatus(live) : null;
     const rows: string[] = [];
+    if (live?.kind === "curb") rows.push(`<p class="muted">路邊停車路段，格數是整段合計</p>`);
     if (status) rows.push(`<p><span class="badge ${status.state === "fresh" ? "live" : status.state === "full" ? "full" : ""}">${esc(status.label)}</span> ${esc(status.text)}${live?.updatedAt ? `（${esc(ago(live.updatedAt))}）` : ""}</p>`);
     else rows.push(`<p class="muted">${esc(kindLabel(lot!.kind))} · 這筆來源沒有即時車位</p>`);
     const total = live?.total ?? lot?.total;
@@ -265,7 +285,7 @@ export class ParkingLens implements Lens {
     const address = live?.address || lot?.address;
     if (address) rows.push(`<p>地址：${esc(address)}</p>`);
     if (lot?.access) rows.push(`<p class="muted">${esc(lot.access)}</p>`);
-    const source = live ? `TDX 即時車位（${live.city}，用你自己的金鑰）` : sourceName(lot!.source);
+    const source = live ? `TDX 即時${live.kind === "curb" ? "路邊格位" : "車位"}（${live.city}，用你自己的金鑰）` : sourceName(lot!.source);
     const link = safeUrl(lot?.url);
     const body = this.ctx.sheet.open(
       "lot",

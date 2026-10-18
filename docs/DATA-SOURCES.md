@@ -56,7 +56,8 @@ twipcam 轉載的靜態快照：只在有人點開那支鏡頭時才載入，標
 | Photon 搜尋／反查 | 可 | 不需要 | 「赤崁樓」可找到 |
 | OpenFreeMap TileJSON／字型 | 可 | 不需要 | 圖磚有 `name:zh-Hant` |
 | Google 地圖頁面（`/api/resolve` 讀座標） | — | Cloudflare 回 429 | 短網址轉到沒有座標的網址時，改用網址裡的店名＋地址搜尋 |
-| TDX（token 與資料） | **不可（CORS）** | GitHub 機房可 | 所以 TDX 一律經轉送（帶使用者自己的金鑰，不快取） |
+| TDX（token 與資料） | **不可（CORS）** | Cloudflare 可 | 所以 TDX 一律經轉送（帶使用者自己的金鑰，不快取）；token、停車場、剩餘車位、CCTV、路邊路段、公車都已在正式網站實測 |
+| TDX 連續呼叫 | — | 約第 6 次後回 429 | 即使每次間隔 1.2 秒；App 把靜態清單快取 6 小時、呼叫排隊間隔 500 ms，遇 429 等 3 秒重試一次 |
 | 氣象署 | 可 | 可 | 特報、地震報告、颱風（欄位為大寫開頭，例如 `TropicalCyclones.TropicalCyclone`） |
 
 公路局、高公局影像用 `<img>` 顯示，不需要 CORS；它們的伺服器可能擋國外 IP，所以 CI 的直連結果不代表台灣使用者的情況。

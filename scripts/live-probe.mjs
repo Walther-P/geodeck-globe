@@ -25,7 +25,7 @@ const keys = { tdxId: process.env.PROBE_TDX_ID ?? "", tdxSecret: process.env.PRO
 const results = await page.evaluate(async (keys) => {
   const rows = [];
   const now = Math.floor(Date.now() / 1000);
-  async function probe(name, url, check, init = {}) {
+  async function probe(name, url, check, init = {}, noteLimit = 160) {
     const row = { name, direct: "", relay: "", note: "" };
     for (const via of ["direct", "relay"]) {
       const target = via === "direct" ? url : `${location.origin}/relay?u=${encodeURIComponent(url)}`;
@@ -35,12 +35,14 @@ const results = await page.evaluate(async (keys) => {
         const body = type.includes("json") ? await r.json() : type.startsWith("image/") ? { image: (await r.blob()).size } : await r.text();
         let note = "";
         try {
-          note = r.ok ? String(check(body)) : `HTTP ${r.status}`;
+          // A refusal's own words (and Retry-After) say which limit was hit.
+          const said = typeof body === "string" ? body : JSON.stringify(body);
+          note = r.ok ? String(check(body)) : `HTTP ${r.status}${r.headers.get("retry-after") ? ` retry-after ${r.headers.get("retry-after")}` : ""} ${said.slice(0, 200)}`;
         } catch (e) {
           note = `shape: ${e.message}`;
         }
         row[via] = r.ok ? "ok" : `HTTP ${r.status}`;
-        if (!row.note || via === "direct") row.note = note.slice(0, 160);
+        if (!row.note || via === "direct") row.note = note.slice(0, noteLimit);
       } catch (e) {
         row[via] = via === "direct" ? "blocked (CORS/network)" : "failed";
       }
@@ -115,23 +117,25 @@ const results = await page.evaluate(async (keys) => {
     );
     if (token) {
       const h = { headers: { authorization: `Bearer ${token}`, accept: "application/json" } };
-      // Stay under TDX's per-second limit, as the app does.
-      const pause = () => new Promise((r) => setTimeout(r, 1200));
+      // Stay well under TDX's rate limit; the curb feeds go first because
+      // their row format is what the app still needs confirmed.
+      const pause = () => new Promise((r) => setTimeout(r, 3000));
       const tdx = "https://tdx.transportdata.tw/api/basic";
+      const firstRow = (d, suffix) => (Array.isArray(d) ? d : Object.entries(d).find(([k, v]) => k.endsWith(suffix) && Array.isArray(v))?.[1] ?? [])[0] ?? {};
       await pause();
-      await probe("TDX CarPark Tainan", `${tdx}/v1/Parking/OffStreet/CarPark/City/Tainan?$format=JSON&$top=2`, (d) => `keys ${Object.keys(d)}; park keys ${Object.keys(d.CarParks?.[0] ?? {}).join(",")}`, h);
+      await probe("TDX OnStreet segment Tainan", `${tdx}/v1/Parking/OnStreet/ParkingSegment/City/Tainan?$format=JSON&$top=1&$select=ParkingSegmentID,ParkingSegmentName,ParkingSegmentPosition,FareDescription`, (d) => `keys ${Object.keys(d)}; ${JSON.stringify(firstRow(d, "Segments"))}`, h, 700);
+      await pause();
+      await probe("TDX OnStreet availability Tainan", `${tdx}/v1/Parking/OnStreet/ParkingSegmentAvailability/City/Tainan?$format=JSON&$top=1`, (d) => `keys ${Object.keys(d)}; ${JSON.stringify(firstRow(d, "Availabilities"))}`, h, 700);
+      await pause();
+      await probe("TDX CarPark Tainan", `${tdx}/v1/Parking/OffStreet/CarPark/City/Tainan?$format=JSON&$top=2`, (d) => `keys ${Object.keys(d)}; park keys ${Object.keys(d.CarParks?.[0] ?? {}).join(",")}`, h, 400);
       await pause();
       await probe("TDX Availability Tainan", `${tdx}/v1/Parking/OffStreet/ParkingAvailability/City/Tainan?$format=JSON&$top=2`, (d) => `keys ${Object.keys(d)}; row ${JSON.stringify(d.ParkingAvailabilities?.[0] ?? {}).slice(0, 220)}`, h);
+      await pause();
+      await probe("TDX OnStreet availability Taipei", `${tdx}/v1/Parking/OnStreet/ParkingSegmentAvailability/City/Taipei?$format=JSON&$top=1`, (d) => `keys ${Object.keys(d)}; ${JSON.stringify(firstRow(d, "Availabilities"))}`, h, 400);
       await pause();
       await probe("TDX CCTV Freeway", `${tdx}/v2/Road/Traffic/CCTV/Freeway?$format=JSON&$top=1`, (d) => `keys ${Object.keys(d)}; row ${JSON.stringify(d.CCTVs?.[0] ?? {}).slice(0, 220)}`, h);
       await pause();
       await probe("TDX CCTV City Tainan", `${tdx}/v2/Road/Traffic/CCTV/City/Tainan?$format=JSON&$top=1`, (d) => `row ${JSON.stringify(d.CCTVs?.[0] ?? d[0] ?? {}).slice(0, 200)}`, h);
-      await pause();
-      await probe("TDX OnStreet segment Tainan", `${tdx}/v1/Parking/OnStreet/ParkingSegment/City/Tainan?$format=JSON&$top=1`, (d) => { const r = (d.ParkingSegments ?? [])[0] ?? {}; return `row keys ${Object.keys(r)}; ${JSON.stringify(r).slice(0, 600)}`; }, h);
-      await pause();
-      await probe("TDX OnStreet availability Tainan", `${tdx}/v1/Parking/OnStreet/ParkingSegmentAvailability/City/Tainan?$format=JSON&$top=1`, (d) => { const r = (d.ParkingSegmentAvailabilities ?? d.CurbParkingSegmentAvailabilities ?? [])[0] ?? {}; return `keys ${Object.keys(d)}; row keys ${Object.keys(r)}; ${JSON.stringify(r).slice(0, 500)}`; }, h);
-      await pause();
-      await probe("TDX CCTV City Taipei", `${tdx}/v2/Road/Traffic/CCTV/City/Taipei?$format=JSON&$top=1`, (d) => `row ${JSON.stringify(d.CCTVs?.[0] ?? d[0] ?? {}).slice(0, 260)}`, h);
       // Camera feeds through our Worker: does each answer with an image or MJPEG?
       for (const [label, cam] of [
         ["Cam proxy Freeway", "https://cctvn.freeway.gov.tw/abs2mjpg/bmjpg?camera=20100"],
