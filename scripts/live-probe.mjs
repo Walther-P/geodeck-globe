@@ -208,20 +208,35 @@ const results = await page.evaluate(async (keys) => {
   return rows;
 }, keys);
 
-// Real-data screenshots of the app itself.
-for (const [name, w, h, view, lenses] of [
-  ["live-globe", 393, 852, { lng: 121, lat: 23.6, zoom: 1.8 }, ["sky"]],
-  ["live-taiwan", 393, 852, { lng: 120.9, lat: 23.6, zoom: 6.6 }, ["weather", "sky"]],
-  ["live-tainan", 393, 852, { lng: 120.205, lat: 22.992, zoom: 15.5 }, ["parking", "traffic"]],
+// Real-data screenshots of the app itself. The Tainan one also runs the
+// parking lens end to end with the probe's TDX key (CI only, never shipped)
+// and records what the lens says about live counts.
+for (const [name, w, h, view, lenses, tdx] of [
+  ["live-globe", 393, 852, { lng: 121, lat: 23.6, zoom: 1.8 }, ["sky"], false],
+  ["live-taiwan", 393, 852, { lng: 120.9, lat: 23.6, zoom: 6.6 }, ["weather", "sky"], false],
+  ["live-tainan", 393, 852, { lng: 120.205, lat: 22.992, zoom: 15.5 }, ["traffic", "parking"], true],
 ]) {
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
-  await ctx.addInitScript(([view, lenses]) => {
+  const appKeys = tdx && keys.tdxId ? { tdxId: keys.tdxId, tdxSecret: keys.tdxSecret, cwa: "", google: "" } : null;
+  await ctx.addInitScript(([view, lenses, appKeys]) => {
     localStorage.setItem("gdg.view.v1", JSON.stringify(view));
     localStorage.setItem("gdg.lenses.v1", JSON.stringify(lenses));
-  }, [view, lenses]);
+    if (appKeys) localStorage.setItem("gdg.keys.v1", JSON.stringify(appKeys));
+  }, [view, lenses, appKeys]);
   const p = await ctx.newPage();
   await p.goto(base);
   await p.waitForTimeout(12000);
+  if (appKeys) {
+    // The probe's own TDX calls may have used this minute's budget; the app waits its turn.
+    let status = "";
+    for (let i = 0; i < 18; i++) {
+      status = (await p.textContent("#strip .strip-status").catch(() => "")) ?? "";
+      if (status && !/正在更新|載入中/.test(status)) break;
+      await p.waitForTimeout(5000);
+    }
+    const counts = status.match(/停車場 (\d+)\/(\d+)/);
+    results.push({ name: "App: Tainan parking with TDX key", direct: counts && Number(counts[1]) > 0 ? "ok" : "check", relay: "-", note: status.slice(0, 200) });
+  }
   await p.screenshot({ path: `${out}${name}.png` });
   await ctx.close();
 }
