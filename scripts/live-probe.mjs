@@ -104,15 +104,22 @@ const results = await page.evaluate(async (keys) => {
     }
   }
 
-  // Google's logo must load wherever Google tiles are shown.
-  const logo = await new Promise((resolve) => {
-    const img = new Image();
-    const timer = setTimeout(() => resolve("timeout"), 10000);
-    img.onload = () => (clearTimeout(timer), resolve(`ok ${img.naturalWidth}×${img.naturalHeight}`));
-    img.onerror = () => (clearTimeout(timer), resolve("failed"));
-    img.src = "https://developers.google.com/static/maps/documentation/images/google_on_non_white.png";
-  });
-  rows.push({ name: "Google logo image", direct: logo.startsWith("ok") ? "ok" : logo, relay: "-", note: logo });
+  // Google's logo must load wherever Google tiles are shown (same list as src/map/basemap.ts).
+  for (const src of [
+    "https://maps.gstatic.com/mapfiles/api-3/images/google_white5_hdpi.png",
+    "https://maps.gstatic.com/mapfiles/api-3/images/google_white5.png",
+    "https://developers.google.com/maps/documentation/images/google_on_non_white.png",
+    "https://www.gstatic.com/images/branding/googlelogo/2x/googlelogo_color_92x30dp.png",
+  ]) {
+    const logo = await new Promise((resolve) => {
+      const img = new Image();
+      const timer = setTimeout(() => resolve("timeout"), 10000);
+      img.onload = () => (clearTimeout(timer), resolve(`ok ${img.naturalWidth}×${img.naturalHeight}`));
+      img.onerror = () => (clearTimeout(timer), resolve("failed"));
+      img.src = src;
+    });
+    rows.push({ name: `Google logo ${src.split("/").pop()}`, direct: logo.startsWith("ok") ? "ok" : logo, relay: "-", note: `${logo} ${src}` });
+  }
 
   if (keys.google) {
     const g = "https://tile.googleapis.com";
@@ -149,9 +156,8 @@ const results = await page.evaluate(async (keys) => {
     );
     if (token) {
       const h = { headers: { authorization: `Bearer ${token}`, accept: "application/json" } };
-      // Stay well under TDX's rate limit; the curb feeds go first because
-      // their row format is what the app still needs confirmed.
-      const pause = () => new Promise((r) => setTimeout(r, 3000));
+      // A free key gets about five calls a minute: 12.5 s apart keeps every row readable.
+      const pause = () => new Promise((r) => setTimeout(r, 12500));
       const tdx = "https://tdx.transportdata.tw/api/basic";
       const firstRow = (d, suffix) => (Array.isArray(d) ? d : Object.entries(d).find(([k, v]) => k.endsWith(suffix) && Array.isArray(v))?.[1] ?? [])[0] ?? {};
       await pause();

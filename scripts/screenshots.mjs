@@ -133,7 +133,7 @@ const fixtures = {
     if (path.includes("/viewport")) return { copyright: "Map data ©2026 Google" };
     return GOOGLE_TILE;
   },
-  "developers.google.com": () => GOOGLE_LOGO,
+  "maps.gstatic.com": () => GOOGLE_LOGO,
   "photon.komoot.io": () => ({ features: [{ geometry: { coordinates: [120.2049, 22.9908] }, properties: { name: "赤崁樓", city: "臺南市", district: "中西區", country: "臺灣", countrycode: "TW" } }] }),
 };
 

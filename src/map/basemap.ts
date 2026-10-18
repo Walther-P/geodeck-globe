@@ -35,7 +35,13 @@ export const OVERLAYS: Record<OverlayId, { label: string; layer: string }> = {
 const CHOICE = "gdg.basemap.v1";
 const SESSIONS = "gdg.gsession.v1";
 const TILES = "https://tile.googleapis.com";
-const LOGO = "https://developers.google.com/static/maps/documentation/images/google_on_non_white.png";
+/** Google's own logo files, tried in order (the live probe reports which load). */
+export const GOOGLE_LOGOS = [
+  "https://maps.gstatic.com/mapfiles/api-3/images/google_white5_hdpi.png",
+  "https://maps.gstatic.com/mapfiles/api-3/images/google_white5.png",
+  "https://developers.google.com/maps/documentation/images/google_on_non_white.png",
+  "https://www.gstatic.com/images/branding/googlelogo/2x/googlelogo_color_92x30dp.png",
+];
 /** Every layer of 百眼's own map except the background. */
 const OWN_LAYERS = tacticalStyle().layers.flatMap((l) => (l.id === "background" ? [] : [l.id]));
 
@@ -131,8 +137,13 @@ export class Basemap {
   ) {
     this.brand = document.createElement("div");
     this.brand.className = "gbrand hidden";
-    this.brand.innerHTML = `<img src="${LOGO}" alt="Google" width="59" height="18"><span class="gcopy"></span>`;
-    this.brand.querySelector("img")!.addEventListener("error", (e) => ((e.target as HTMLImageElement).outerHTML = "<b>Google</b>"));
+    this.brand.innerHTML = `<img src="${GOOGLE_LOGOS[0]}" alt="Google" height="18"><span class="gcopy"></span>`;
+    const logo = this.brand.querySelector("img")!;
+    let tried = 0;
+    logo.addEventListener("error", () => {
+      if (++tried < GOOGLE_LOGOS.length) logo.src = GOOGLE_LOGOS[tried];
+      else logo.outerHTML = "<b>Google</b>";
+    });
     map.getContainer().parentElement!.append(this.brand);
     map.once("load", () => {
       this.ready = true;
