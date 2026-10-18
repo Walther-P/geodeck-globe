@@ -217,6 +217,12 @@ export const FLIGHT_SOURCES: FlightSource[] = [
     parse: (d) => parseAdsb(d as Parameters<typeof parseAdsb>[0]),
   },
   {
+    name: "adsb.one",
+    url: (lat, lng, nm) => `https://api.adsb.one/v2/point/${lat}/${lng}/${nm}`,
+    route: "direct-then-relay",
+    parse: (d) => parseAdsb(d as Parameters<typeof parseAdsb>[0]),
+  },
+  {
     name: "OpenSky Network",
     url: (lat, lng, nm) => {
       const dLat = (nm * 1.852) / 111.32;
@@ -224,7 +230,7 @@ export const FLIGHT_SOURCES: FlightSource[] = [
       const q = new URLSearchParams({ lamin: (lat - dLat).toFixed(2), lamax: (lat + dLat).toFixed(2), lomin: (lng - dLng).toFixed(2), lomax: (lng + dLng).toFixed(2) });
       return `https://opensky-network.org/api/states/all?${q}`;
     },
-    route: "direct",
+    route: "direct-then-relay",
     parse: (d) => parseOpenSky(d as Parameters<typeof parseOpenSky>[0]),
   },
   {

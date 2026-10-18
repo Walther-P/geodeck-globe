@@ -40,6 +40,22 @@ export const RELAY_RULES: RelayRule[] = [
     keyed: false,
   },
   {
+    id: "adsb-one",
+    host: "api.adsb.one",
+    path: /^\/v2\/point\/-?\d{1,3}(\.\d+)?\/-?\d{1,3}(\.\d+)?\/\d{1,3}$/,
+    method: "GET",
+    ttl: 10,
+    keyed: false,
+  },
+  {
+    id: "opensky",
+    host: "opensky-network.org",
+    path: /^\/api\/states\/all$/,
+    method: "GET",
+    ttl: 10,
+    keyed: false,
+  },
+  {
     id: "celestrak",
     host: "celestrak.org",
     path: /^\/NORAD\/elements\/gp\.php$/,
