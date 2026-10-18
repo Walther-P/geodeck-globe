@@ -118,7 +118,12 @@ async function resolveLink(request: Request, ctx: ExecutionContext): Promise<Res
       if (hasCoordinates(url.href)) break;
       continue;
     }
-    if (!r.ok) return fail(502, `Google answered ${r.status}`);
+    // Google often refuses page reads from shared Cloudflare IPs (429); the
+    // final URL still carries the place name, so hand that back.
+    if (!r.ok) {
+      await r.body?.cancel();
+      return json({ url: url.href, error: `Google answered ${r.status}` });
+    }
     if (hasCoordinates(url.href)) {
       await r.body?.cancel();
       break;

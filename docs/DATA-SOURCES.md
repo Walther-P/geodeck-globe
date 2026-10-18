@@ -53,6 +53,7 @@ GeoDeck 0.7 的目錄有 11,514 支鏡頭，其中 4,302 支的影像網址是�
 | CelesTrak | 可 | 可 | 走轉送以便快取 4 小時，減輕 CelesTrak 負擔 |
 | Photon 搜尋／反查 | 可 | 不需要 | 「赤崁樓」可找到 |
 | OpenFreeMap TileJSON／字型 | 可 | 不需要 | 圖磚有 `name:zh-Hant` |
+| Google 地圖頁面（`/api/resolve` 讀座標） | — | Cloudflare 回 429 | 短網址轉到沒有座標的網址時，改用網址裡的店名＋地址搜尋 |
 | TDX、氣象署 | 待測 | 待測 | 需要在 repository secrets 設定 `PROBE_TDX_ID`、`PROBE_TDX_SECRET`、`PROBE_CWA_KEY` 才會實測 |
 
 公路局、高公局影像用 `<img>` 顯示，不需要 CORS；它們的伺服器可能擋國外 IP，所以 CI 的直連結果不代表台灣使用者的情況。
