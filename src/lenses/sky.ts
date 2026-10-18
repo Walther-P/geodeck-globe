@@ -29,6 +29,7 @@ export class SkyLens implements Lens {
   private stops: Array<() => void> = [];
   private planes: Aircraft[] = [];
   private planesAt = 0;
+  private planeSource = "";
   private sats: Satellite[] = [];
   private starlink: Satellite[] = [];
   private tracked: Satellite | null = null;
@@ -197,9 +198,11 @@ export class SkyLens implements Lens {
     const corner = { lat: b.getNorth(), lng: b.getEast() };
     const nm = distance(center, corner) / 1852;
     try {
-      this.planes = await aircraftNear(center, nm * 1.1);
+      const { aircraft, source } = await aircraftNear(center, nm * 1.1);
+      this.planes = aircraft;
+      this.planeSource = source;
       this.planesAt = Date.now();
-      this.notes.planes = `航班 ${this.planes.length} 架（ADS-B 社群接收，非完整）`;
+      this.notes.planes = `航班 ${this.planes.length} 架（${source}，ADS-B 社群接收，非完整）`;
       this.drawPlanes();
     } catch (e) {
       this.notes.planes = `航班暫時無法取得：${(e as Error).message}`;
@@ -238,7 +241,7 @@ export class SkyLens implements Lens {
         <div class="stat"><b>${esc(a.reg || "—")}</b><small>註冊號</small></div>
       </div>
       <p>高度：${alt}<br>地速：${speed}<br>位置：<span class="mono">${formatCoord(a)}</span></p>
-      <p class="micro">ICAO ${esc(a.id.toUpperCase())} · ${a.seen === null ? "" : `位置 ${Math.round(a.seen)} 秒前收到 · `}資料：adsb.lol 社群接收站（ODbL）。不是每架飛機都會被收到，軍機與部分航班可能不顯示。</p>
+      <p class="micro">ICAO ${esc(a.id.toUpperCase())} · ${a.seen === null ? "" : `位置 ${Math.round(a.seen)} 秒前收到 · `}資料：${esc(this.planeSource)} 社群 ADS-B 接收站。不是每架飛機都會被收到，軍機與部分航班可能不顯示。</p>
       <div class="actions"><a class="btn" href="https://globe.adsb.lol/?icao=${encodeURIComponent(a.id)}" target="_blank" rel="noopener">在 adsb.lol 追蹤</a></div>`,
     );
   }

@@ -13,6 +13,8 @@ import { tacticalStyle } from "../src/map/style";
 describe("relay allowlist", () => {
   it("only forwards known public feeds", () => {
     expect(matchRelayRule("https://api.adsb.lol/v2/point/23.000/120.200/120", "GET")?.rule.id).toBe("adsb");
+    expect(matchRelayRule("https://api.airplanes.live/v2/point/23.5/121/150", "GET")?.rule.id).toBe("airplanes-live");
+    expect(matchRelayRule("https://opendata.adsb.fi/api/v2/lat/23.5/lon/121/dist/150", "GET")?.rule.id).toBe("adsb-fi");
     expect(matchRelayRule("https://celestrak.org/NORAD/elements/gp.php?GROUP=visual&FORMAT=tle", "GET")?.rule.id).toBe("celestrak");
     expect(matchRelayRule("https://tdx.transportdata.tw/api/basic/v1/Parking/OffStreet/CarPark/City/Tainan?$format=JSON", "GET")?.rule.keyed).toBe(true);
     expect(matchRelayRule("https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token", "POST")?.rule.id).toBe("tdx-token");

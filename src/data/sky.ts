@@ -1,7 +1,7 @@
 // Keyless global feeds: radar, cloud imagery, earthquakes, aircraft, satellites.
 
 import { degreesLat, degreesLong, ecfToLookAngles, eciToEcf, eciToGeodetic, gstime, propagate, twoline2satrec, type SatRec } from "../lib/sgp4";
-import { FeedError, getJson, getText } from "../lib/net";
+import { FeedError, getJson, getText, type Route } from "../lib/net";
 import { finite, num, point, safeUrl, type Point } from "../lib/util";
 
 // ---- Radar (RainViewer) ---------------------------------------------------
@@ -36,14 +36,26 @@ export function cloudLayer(lng: number): string {
 const GIBS = "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best";
 export const CLOUD_MATRIX = "GoogleMapsCompatible_Level6";
 
-/** Latest available time from GIBS DescribeDomains (a small XML), or null. */
+/** A recent time whose tiles exist, from GIBS DescribeDomains (a small XML), or null. */
 export async function cloudTime(layer: string, signal?: AbortSignal): Promise<string | null> {
   const q = new URLSearchParams({ SERVICE: "WMTS", REQUEST: "DescribeDomains", VERSION: "1.0.0", LAYER: layer, TILEMATRIXSET: CLOUD_MATRIX });
   try {
-    return latestDomainTime(await getText(`${GIBS}/wmts.cgi?${q}`, { signal, timeout: 12000 }));
+    return settledTime(latestDomainTime(await getText(`${GIBS}/wmts.cgi?${q}`, { signal, timeout: 12000 })));
   } catch {
     return null;
   }
+}
+
+/**
+ * GIBS lists a geostationary time before all of its tiles are published
+ * (the probe saw 404s at the newest step), so step back 30 minutes.
+ */
+export function settledTime(latest: string | null): string | null {
+  if (!latest || !latest.includes("T")) return latest;
+  const t = Date.parse(latest) - 30 * 60000;
+  if (!Number.isFinite(t)) return null;
+  const step = 10 * 60000;
+  return new Date(Math.floor(t / step) * step).toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
 export function latestDomainTime(xml: string): string | null {
@@ -102,7 +114,7 @@ export async function usgsQuakes(signal?: AbortSignal): Promise<Quake[]> {
   return parseUsgs(d);
 }
 
-// ---- Aircraft (adsb.lol, community ADS-B) ---------------------------------
+// ---- Aircraft (community ADS-B networks) ------------------------------------
 
 export interface Aircraft {
   id: string;
@@ -133,13 +145,14 @@ interface AdsbRow {
   seen_pos?: number;
 }
 
-export function parseAdsb(d: { ac?: AdsbRow[] }): Aircraft[] {
+/** readsb "v2" JSON, used by adsb.lol, airplanes.live and adsb.fi. */
+export function parseAdsb(d: { ac?: AdsbRow[]; aircraft?: AdsbRow[] }): Aircraft[] {
   const out: Aircraft[] = [];
-  for (const a of d.ac ?? []) {
+  for (const a of d.ac ?? d.aircraft ?? []) {
     const pos = point(a.lat, a.lon);
     if (!pos || !a.hex) continue;
     out.push({
-      id: a.hex,
+      id: a.hex.replace(/^~/, ""),
       callsign: (a.flight ?? "").trim(),
       reg: a.r ?? "",
       type: a.t ?? "",
@@ -154,13 +167,101 @@ export function parseAdsb(d: { ac?: AdsbRow[] }): Aircraft[] {
   return out;
 }
 
-/** radius in nautical miles; adsb.lol caps it at 250. */
-export async function aircraftNear(p: Point, radiusNm: number, signal?: AbortSignal): Promise<Aircraft[]> {
-  const r = Math.max(5, Math.min(250, Math.round(radiusNm)));
-  const url = `https://api.adsb.lol/v2/point/${p.lat.toFixed(3)}/${p.lng.toFixed(3)}/${r}`;
-  // adsb.lol sends no CORS headers (checked by scripts/live-probe.mjs), so
-  // browsers always go through our relay, which also caches for 8 s.
-  return parseAdsb(await getJson(url, { signal, route: "relay", timeout: 12000 }));
+/** OpenSky state vectors: positional arrays, metres and m/s. */
+export function parseOpenSky(d: { time?: number; states?: unknown[][] | null }): Aircraft[] {
+  const out: Aircraft[] = [];
+  for (const s of d.states ?? []) {
+    const pos = point(s[6], s[5]);
+    const id = typeof s[0] === "string" ? s[0] : "";
+    if (!pos || !id) continue;
+    const alt = num(s[7]);
+    const speed = num(s[9]);
+    const at = num(s[3]);
+    out.push({
+      id,
+      callsign: typeof s[1] === "string" ? s[1].trim() : "",
+      reg: "",
+      type: "",
+      ...pos,
+      altFt: alt === null ? null : alt * 3.28084,
+      onGround: s[8] === true,
+      speedKt: speed === null ? null : speed * 1.943844,
+      track: num(s[10]),
+      seen: at !== null && finite(d.time) ? Math.max(0, d.time - at) : null,
+    });
+  }
+  return out;
+}
+
+interface FlightSource {
+  name: string;
+  url(lat: number, lng: number, nm: number): string;
+  route: Route;
+  parse(d: unknown): Aircraft[];
+}
+
+// Order follows scripts/live-probe.mjs results: networks that let browsers
+// read them directly come first, so each visitor uses their own rate limit;
+// the relay (shared Cloudflare IPs, often rate-limited) is the fallback.
+export const FLIGHT_SOURCES: FlightSource[] = [
+  {
+    name: "airplanes.live",
+    url: (lat, lng, nm) => `https://api.airplanes.live/v2/point/${lat}/${lng}/${nm}`,
+    route: "direct-then-relay",
+    parse: (d) => parseAdsb(d as Parameters<typeof parseAdsb>[0]),
+  },
+  {
+    name: "adsb.fi",
+    url: (lat, lng, nm) => `https://opendata.adsb.fi/api/v2/lat/${lat}/lon/${lng}/dist/${nm}`,
+    route: "direct-then-relay",
+    parse: (d) => parseAdsb(d as Parameters<typeof parseAdsb>[0]),
+  },
+  {
+    name: "OpenSky Network",
+    url: (lat, lng, nm) => {
+      const dLat = (nm * 1.852) / 111.32;
+      const dLng = dLat / Math.max(0.2, Math.cos((lat * Math.PI) / 180));
+      const q = new URLSearchParams({ lamin: (lat - dLat).toFixed(2), lamax: (lat + dLat).toFixed(2), lomin: (lng - dLng).toFixed(2), lomax: (lng + dLng).toFixed(2) });
+      return `https://opensky-network.org/api/states/all?${q}`;
+    },
+    route: "direct",
+    parse: (d) => parseOpenSky(d as Parameters<typeof parseOpenSky>[0]),
+  },
+  {
+    name: "adsb.lol",
+    url: (lat, lng, nm) => `https://api.adsb.lol/v2/point/${lat}/${lng}/${nm}`,
+    route: "relay",
+    parse: (d) => parseAdsb(d as Parameters<typeof parseAdsb>[0]),
+  },
+];
+
+/** Snap the query so nearby visitors share relay cache entries. */
+export function flightQuery(p: Point, radiusNm: number): { lat: number; lng: number; nm: number } {
+  const nm = [25, 50, 100, 150, 250].find((b) => b >= radiusNm) ?? 250;
+  const grid = nm <= 50 ? 0.1 : 0.25;
+  const snap = (v: number) => Math.round(v / grid) * grid;
+  return { lat: Number(snap(p.lat).toFixed(2)), lng: Number(snap(p.lng).toFixed(2)), nm };
+}
+
+let preferred = 0;
+
+/** Aircraft around a point from the first network that answers. */
+export async function aircraftNear(p: Point, radiusNm: number, signal?: AbortSignal): Promise<{ aircraft: Aircraft[]; source: string }> {
+  const q = flightQuery(p, radiusNm);
+  let lastError: unknown = null;
+  for (let k = 0; k < FLIGHT_SOURCES.length; k++) {
+    const i = (preferred + k) % FLIGHT_SOURCES.length;
+    const src = FLIGHT_SOURCES[i];
+    try {
+      const aircraft = src.parse(await getJson(src.url(q.lat, q.lng, q.nm), { signal, route: src.route, timeout: 10000 }));
+      preferred = i;
+      return { aircraft, source: src.name };
+    } catch (e) {
+      if (signal?.aborted) throw e;
+      lastError = e;
+    }
+  }
+  throw lastError ?? new FeedError("航班來源都暫時無法使用");
 }
 
 // ---- Satellites (CelesTrak GP + SGP4) -------------------------------------

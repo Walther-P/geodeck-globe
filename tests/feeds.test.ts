@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { intensityRank, parseCyclones, parseQuakes, parseWarnings } from "../src/data/cwa";
-import { cloudLayer, latestDomainTime, parseAdsb, parseTle, parseUsgs, satPosition } from "../src/data/sky";
+import { cloudLayer, flightQuery, latestDomainTime, parseAdsb, parseOpenSky, parseTle, parseUsgs, satPosition, settledTime } from "../src/data/sky";
 import { normalizeBuses, normalizeCctv, normalizeLiveLots } from "../src/data/tdx";
 import { parseForecast, rainOutlook } from "../src/data/weather";
 
@@ -160,6 +160,20 @@ describe("sky feeds", () => {
     expect(a[1]).toMatchObject({ onGround: true, altFt: null });
   });
 
+  it("parses OpenSky state vectors into the same shape", () => {
+    const a = parseOpenSky({ time: 1000, states: [["8964a1", "CAL7    ", "Taiwan", 995, 999, 121.23, 25.08, 1280, false, 92.6, 230, -3, null, 1300, "1234", false, 0], ["bad"]] });
+    expect(a).toHaveLength(1);
+    expect(a[0]).toMatchObject({ id: "8964a1", callsign: "CAL7", onGround: false, seen: 5, track: 230 });
+    expect(Math.round(a[0].altFt!)).toBe(4199);
+    expect(Math.round(a[0].speedKt!)).toBe(180);
+  });
+
+  it("snaps flight queries so nearby visitors share cached answers", () => {
+    expect(flightQuery({ lat: 23.512, lng: 120.988 }, 140)).toEqual({ lat: 23.5, lng: 121, nm: 150 });
+    expect(flightQuery({ lat: 23.512, lng: 120.988 }, 30)).toEqual({ lat: 23.5, lng: 121, nm: 50 });
+    expect(flightQuery({ lat: 23.512, lng: 120.988 }, 900).nm).toBe(250);
+  });
+
   it("parses USGS quakes", () => {
     const q = parseUsgs({ features: [{ id: "us1", geometry: { coordinates: [121.6, 23.9, 10] }, properties: { mag: 5.1, time: T0, place: "Taiwan", url: "https://earthquake.usgs.gov/x" } }] });
     expect(q[0]).toMatchObject({ id: "usgs-us1", magnitude: 5.1, depthKm: 10, lat: 23.9, lng: 121.6 });
@@ -180,6 +194,9 @@ describe("sky feeds", () => {
     const xml = `<Domains><DimensionDomain><ows:Identifier>time</ows:Identifier><Domain>2026-10-01T00:00:00Z/2026-10-18T07:30:00Z/PT10M</Domain></DimensionDomain></Domains>`;
     expect(latestDomainTime(xml)).toBe("2026-10-18T07:30:00Z");
     expect(latestDomainTime("<x/>")).toBeNull();
+    expect(settledTime("2026-10-18T08:30:00Z")).toBe("2026-10-18T08:00:00Z");
+    expect(settledTime("2026-10-18T08:35:00Z")).toBe("2026-10-18T08:00:00Z");
+    expect(settledTime("2026-10-17")).toBe("2026-10-17");
     expect(cloudLayer(121)).toMatch(/^Himawari/);
     expect(cloudLayer(-120)).toMatch(/^GOES-West/);
   });

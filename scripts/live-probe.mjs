@@ -68,9 +68,17 @@ const results = await page.evaluate(async (keys) => {
     cloudTime = (d.replace(/<\/?Domain>/g, "").split(",").pop() ?? "").split("/")[1] ?? "";
     return `latest ${cloudTime || "?"}`;
   });
-  await probe("GIBS Himawari tile", `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/Himawari_AHI_Band13_Clean_Infrared/default/${cloudTime || "default"}/GoogleMapsCompatible_Level6/4/6/13.png`, (d) => `image ${d.image ?? "?"} bytes`);
+  const gibsTile = (t) => `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/Himawari_AHI_Band13_Clean_Infrared/default/${t}/GoogleMapsCompatible_Level6/4/6/13.png`;
+  // The app uses the advertised latest time minus 30 minutes (settledTime).
+  const back = (t, min) => (t ? new Date(Math.floor((Date.parse(t) - min * 60000) / 600000) * 600000).toISOString().replace(/\.\d{3}Z$/, "Z") : "default");
+  await probe("GIBS tile at latest", gibsTile(cloudTime || "default"), (d) => `image ${d.image ?? "?"} bytes`);
+  await probe("GIBS tile at latest-30m (app)", gibsTile(back(cloudTime, 30)), (d) => `image ${d.image ?? "?"} bytes`);
   await probe("USGS quakes", "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_day.geojson", (d) => `${must(d.features, "features").length} quakes`);
-  await probe("adsb.lol point", "https://api.adsb.lol/v2/point/23.5/121/150", (d) => `${must(d.ac, "ac").length} aircraft; sample keys ${Object.keys(d.ac[0] ?? {}).slice(0, 12).join(",")}`);
+  const acCount = (d) => `${must(d.ac ?? d.aircraft, "ac").length} aircraft`;
+  await probe("adsb.lol point", "https://api.adsb.lol/v2/point/23.5/121/150", acCount);
+  await probe("airplanes.live point", "https://api.airplanes.live/v2/point/23.5/121/150", acCount);
+  await probe("adsb.fi point", "https://opendata.adsb.fi/api/v2/lat/23.5/lon/121/dist/150", acCount);
+  await probe("OpenSky states", "https://opensky-network.org/api/states/all?lamin=21&lamax=26&lomin=118&lomax=124", (d) => `${(d.states ?? []).length} aircraft`);
   await probe("CelesTrak visual", "https://celestrak.org/NORAD/elements/gp.php?GROUP=visual&FORMAT=tle", (t) => `${String(t).split("\n").filter((l) => l.startsWith("1 ")).length} element sets`);
   await probe("Photon search", "https://photon.komoot.io/api/?q=%E8%B5%A4%E5%B4%81%E6%A8%93&limit=3&lat=23&lon=120.2", (d) => must(d.features, "features").map((f) => f.properties?.name).join(" / "));
   await probe("Photon reverse", "https://photon.komoot.io/reverse?lat=22.997&lon=120.2025&limit=1", (d) => d.features?.[0]?.properties?.name ?? "(no name)");

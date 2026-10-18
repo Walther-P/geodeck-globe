@@ -24,6 +24,8 @@ export interface FetchOptions {
 
 /** null = not tried yet; false = this deployment has no relay (e.g. `vite dev`). */
 let relayPresent: boolean | null = null;
+/** Hosts that refused a direct browser read this session; go straight to the relay. */
+const blockedHosts = new Set<string>();
 
 export function relayUrl(target: string): string {
   return `${location.origin}/relay?u=${encodeURIComponent(target)}`;
@@ -88,13 +90,16 @@ async function viaRelay(url: string, opts: FetchOptions): Promise<Response | nul
 
 export async function request(url: string, opts: FetchOptions = {}): Promise<Response> {
   const route = opts.route ?? "direct";
+  const host = new URL(url).hostname;
   try {
-    if (route === "relay") return (await viaRelay(url, opts)) ?? checked(await send(url, opts));
+    if (route === "relay" || (route === "direct-then-relay" && blockedHosts.has(host) && relayPresent !== false))
+      return (await viaRelay(url, opts)) ?? checked(await send(url, opts));
     try {
       return checked(await send(url, opts));
     } catch (e) {
       const blocked = !(e instanceof FeedError) && !isTimeout(e) && !opts.signal?.aborted;
       if (route !== "direct-then-relay" || !blocked) throw e;
+      blockedHosts.add(host);
       const relayed = await viaRelay(url, opts);
       if (!relayed) throw e;
       return relayed;
