@@ -1,5 +1,5 @@
 import "./styles.css";
-import { Marker, type MapGeoJSONFeature } from "maplibre-gl";
+import type { MapGeoJSONFeature } from "maplibre-gl";
 import { hasCwa, hasTdx, onKeysChange } from "./data/keys";
 import type { Place } from "./data/places";
 import { ParkingLens } from "./lenses/parking";
@@ -8,19 +8,18 @@ import { TrafficLens } from "./lenses/traffic";
 import { WeatherLens } from "./lenses/weather";
 import type { AppContext, Lens, LensId, Tone } from "./lenses/lens";
 import { read, write } from "./lib/store";
-import { escapeHtml as esc, formatCoord, type Point } from "./lib/util";
+import { escapeHtml as esc, formatCoord } from "./lib/util";
 import { addIcons, createGlobe } from "./map/globe";
 import { $, Sheet, toast } from "./ui/dom";
 import { NowBar } from "./ui/now";
 import { openPlace } from "./ui/place";
 import { openSaved } from "./ui/saved";
+import { Locator } from "./ui/locate";
 import { setupSearch } from "./ui/search";
 import { openSettings } from "./ui/settings";
 
 const sheet = new Sheet();
 const map = createGlobe($("map"), () => toast("地圖底圖連線失敗，暫時只顯示陸地輪廓；其他資訊仍可使用", 6000));
-let me: Point | null = null;
-let meMarker: Marker | null = null;
 
 // ---- Lenses -----------------------------------------------------------------
 
@@ -52,7 +51,7 @@ const ctx: AppContext = {
     taps.push({ layers, handler });
   },
   openSettings: (section) => openSettings(sheet, toast, section, checkUpdate),
-  me: () => me,
+  me: () => locator.me,
 };
 
 const traffic = new TrafficLens(ctx);
@@ -230,33 +229,21 @@ $("filter").addEventListener("click", () => {
   toast(`畫面：${FX_NAMES[fx]}`, 1500);
 });
 
-$("locate").addEventListener("click", () => {
-  if (!navigator.geolocation) return toast("這個瀏覽器不支援定位");
-  toast("取得目前位置…", 2000);
-  navigator.geolocation.getCurrentPosition(
-    (pos) => {
-      me = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-      if (!meMarker) {
-        const el = document.createElement("div");
-        el.className = "me";
-        meMarker = new Marker({ element: el });
-      }
-      meMarker.setLngLat([me.lng, me.lat]).addTo(map);
-      $("locate").setAttribute("aria-pressed", "true");
-      map.flyTo({ center: [me.lng, me.lat], zoom: Math.max(map.getZoom(), 15), duration: 1600 });
-      now.schedule(0);
-    },
-    (err) =>
-      toast(err.code === err.PERMISSION_DENIED ? "沒有定位權限：請在設定允許這個網站使用位置" : "暫時無法取得位置，請到空曠處再試", 5000),
-    { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 },
-  );
-});
+const locator = new Locator(
+  map,
+  () => {
+    $("locate").setAttribute("aria-pressed", "true");
+    now.schedule(0);
+  },
+  toast,
+);
+$("locate").addEventListener("click", () => locator.start());
 
 // ---- Top bar & now -------------------------------------------------------------
 
 const now = new NowBar(
   map,
-  () => me,
+  () => locator.me,
   (s) => {
     if (!s) return toast("拉近地圖或按 ◎ 定位");
     if (s.warnings.length && active.has("weather")) focusLens("weather");
@@ -264,7 +251,19 @@ const now = new NowBar(
   },
 );
 
-setupSearch(map, (p) => showPlace(p));
+const search = setupSearch({ map, choose: (p) => showPlace(p), openSettings: (section) => ctx.openSettings(section) });
+
+// Android "share to GeoDeck" (manifest share_target) and ?q= links land here.
+const shared = new URLSearchParams(location.search);
+const sharedText = [shared.get("title"), shared.get("text"), shared.get("url"), shared.get("q")].filter(Boolean).join("\n");
+if (sharedText) {
+  history.replaceState(null, "", location.pathname);
+  map.once("load", () => {
+    const input = $<HTMLInputElement>("search");
+    input.value = sharedText.split("\n").pop() ?? "";
+    void search.runShared(sharedText);
+  });
+}
 $("openSettings").addEventListener("click", () => ctx.openSettings());
 $("openSaved").addEventListener("click", () => openSaved(sheet, toast, (p, intent) => showPlace(p, intent)));
 

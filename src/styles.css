@@ -843,12 +843,31 @@ body[data-fx="flir"] .fx {
   box-shadow: 0 0 0 6px rgba(94, 234, 212, 0.12);
 }
 .me {
-  width: 16px;
-  height: 16px;
+  position: relative;
+  width: 80px;
+  height: 80px;
+  pointer-events: none;
+}
+.me-beam {
+  position: absolute;
+  inset: 0;
+  width: 80px;
+  height: 80px;
+}
+.me[data-heading="none"] .me-beam {
+  display: none;
+}
+.me-dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
   border: 3px solid #fff;
   border-radius: 50%;
   background: #3b82f6;
-  box-shadow: 0 0 0 8px rgba(59, 130, 246, 0.22);
+  box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.25), 0 1px 4px rgba(0, 0, 0, 0.6);
 }
 
 .maplibregl-ctrl-attrib {
@@ -997,4 +1016,22 @@ body[data-fx="flir"] .fx {
 }
 .nav-more a {
   color: var(--dim);
+}
+
+.paste {
+  font-size: 19px;
+  color: var(--accent);
+}
+.results .tip {
+  color: var(--amber);
+  font-size: 13px;
+}
+.results .src {
+  display: inline-block;
+  margin-right: 4px;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--accent);
+  font-size: 10.5px;
 }

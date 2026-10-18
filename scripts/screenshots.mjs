@@ -80,7 +80,17 @@ const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PAT
 const shots = [
   { name: "phone-globe", w: 393, h: 852, view: { lng: 121, lat: 23.6, zoom: 1.8 }, lenses: ["sky"] },
   { name: "phone-taiwan-sky", w: 393, h: 852, view: { lng: 121, lat: 23.8, zoom: 6.6 }, lenses: ["weather", "sky"], tap: "now" },
-  { name: "phone-tainan-parking", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15.2 }, lenses: ["traffic", "parking"] },
+  { name: "phone-tainan-parking", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15.2 }, lenses: ["traffic", "parking"], healthy: true },
+  { name: "phone-tainan-traffic", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15.2 }, lenses: ["parking", "traffic"], healthy: true },
+  { name: "phone-locate", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15 }, lenses: ["parking"], locate: true },
+  {
+    name: "phone-shared-link",
+    w: 393,
+    h: 852,
+    view: { lng: 121, lat: 23.6, zoom: 7 },
+    lenses: ["parking"],
+    share: "https://www.google.com/maps/place/%E8%B5%A4%E5%B4%81%E6%A8%93/@22.997,120.2,17z/data=!3m1!4b1!4m6!3m5!1s0x1:0x2!8m2!3d22.997534!4d120.202568",
+  },
   { name: "phone-place-card", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 14 }, lenses: ["weather"], click: true },
   { name: "phone-settings", w: 393, h: 852, view: { lng: 121, lat: 23.6, zoom: 6 }, lenses: [], settings: true },
   { name: "phone-landscape", w: 852, h: 393, view: { lng: 121, lat: 23.8, zoom: 6.4 }, lenses: ["sky"], fx: "nvg" },
@@ -88,7 +98,15 @@ const shots = [
 
 const errors = [];
 for (const s of shots) {
-  const ctx = await browser.newContext({ viewport: { width: s.w, height: s.h }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, serviceWorkers: "block" });
+  const ctx = await browser.newContext({
+    viewport: { width: s.w, height: s.h },
+    deviceScaleFactor: 2,
+    isMobile: true,
+    hasTouch: true,
+    serviceWorkers: "block",
+    geolocation: { latitude: 22.9925, longitude: 120.2048, accuracy: 25 },
+    permissions: ["geolocation"],
+  });
   await ctx.addInitScript(({ view, lenses, fx }) => {
     localStorage.setItem("gdg.view.v1", JSON.stringify(view));
     localStorage.setItem("gdg.lenses.v1", JSON.stringify(lenses));
@@ -111,8 +129,31 @@ for (const s of shots) {
   if (s.tap) await page.click("#now");
   if (s.click) await page.mouse.click(s.w / 2, s.h / 2 - 60);
   if (s.settings) await page.click("#openSettings");
+  if (s.locate) {
+    await page.click("#locate");
+    await page.waitForTimeout(1200);
+    // A phone facing east (alpha 270 → heading 90°).
+    await page.evaluate(() => dispatchEvent(new DeviceOrientationEvent("deviceorientationabsolute", { alpha: 270, beta: 0, gamma: 0, absolute: true })));
+  }
+  if (s.share) {
+    await page.fill("#search", s.share);
+    await page.press("#search", "Enter");
+  }
   await page.waitForTimeout(2500);
   await page.screenshot({ path: `${out}${s.name}.png` });
+  // Smoke checks: the focused lens must not report a failure.
+  if (s.healthy) {
+    const status = (await page.textContent("#strip .strip-status").catch(() => "")) ?? "";
+    if (!status || /無法|Invalid|Failed|錯誤|載入中/.test(status)) errors.push(`${s.name}: lens status "${status}"`);
+  }
+  if (s.locate) {
+    const heading = await page.getAttribute(".me", "data-heading").catch(() => null);
+    if (heading !== "on") errors.push(`${s.name}: location marker has no heading (${heading})`);
+  }
+  if (s.share) {
+    const title = (await page.textContent("#sheetTitle").catch(() => "")) ?? "";
+    if (title !== "赤崁樓") errors.push(`${s.name}: shared link opened "${title}"`);
+  }
   await ctx.close();
 }
 await browser.close();

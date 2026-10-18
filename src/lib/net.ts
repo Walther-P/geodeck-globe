@@ -90,7 +90,8 @@ async function viaRelay(url: string, opts: FetchOptions): Promise<Response | nul
 
 export async function request(url: string, opts: FetchOptions = {}): Promise<Response> {
   const route = opts.route ?? "direct";
-  const host = new URL(url).hostname;
+  // Bundled data uses page-relative paths ("./data/…"), so resolve against the page.
+  const host = new URL(url, globalThis.location?.href).hostname;
   try {
     if (route === "relay" || (route === "direct-then-relay" && blockedHosts.has(host) && relayPresent !== false))
       return (await viaRelay(url, opts)) ?? checked(await send(url, opts));

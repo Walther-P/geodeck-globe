@@ -40,6 +40,12 @@ jobs:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
       - run: npm test
       - run: npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      # Opens the built app at phone size with every feed faked and fails the
+      # run if a lens reports an error, the location beam or shared links break.
+      - name: App smoke test
+        run: npm run screenshots
       - name: Bundle satellite snapshot
         run: node scripts/fetch-tle.mjs
       - name: Check Cloudflare credentials
@@ -64,8 +70,6 @@ jobs:
           url=$(grep -oE 'https://geodeck-globe\.[a-z0-9.-]+\.workers\.dev' deploy.log | head -n 1)
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "### Deployed: $url" >> "$GITHUB_STEP_SUMMARY"
-      - name: Install Chromium for the probe
-        run: npx playwright install --with-deps chromium
       - name: Live data probe (local Worker)
         continue-on-error: true
         env:
@@ -86,5 +90,7 @@ jobs:
         if: always()
         with:
           name: live-screenshots
-          path: artifacts/live
+          path: |
+            artifacts/live
+            artifacts/screenshots
           if-no-files-found: ignore

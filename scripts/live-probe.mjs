@@ -87,6 +87,20 @@ const results = await page.evaluate(async (keys) => {
   await probe("OpenFreeMap glyphs", "https://tiles.openfreemap.org/fonts/Noto%20Sans%20Regular/0-255.pbf", (t) => `${String(t).length} chars`);
   await probe("Freeway CCTV image", "https://cctvn.freeway.gov.tw/abs2mjpg/bmjpg?camera=20100", () => "reachable");
 
+  // Google Maps share links, followed by our Worker (deployed or wrangler dev).
+  for (const [name, link] of [
+    ["Resolve Google place URL", "https://www.google.com/maps/place/%E8%B5%A4%E5%B4%81%E6%A8%93/data=!3d22.9975!4d120.2026"],
+    ["Resolve Google ?q= (page fetch)", "https://maps.google.com/?q=%E8%B5%A4%E5%B4%81%E6%A8%93+%E5%8F%B0%E5%8D%97"],
+  ]) {
+    try {
+      const r = await fetch(`${location.origin}/api/resolve?u=${encodeURIComponent(link)}`);
+      const d = await r.json();
+      rows.push({ name, direct: r.ok ? "ok" : `HTTP ${r.status}`, relay: "-", note: d.lat !== undefined ? `${d.lat},${d.lng} ${d.title ?? ""}` : `no coords; ${d.error ?? d.url ?? ""}`.slice(0, 160) });
+    } catch (e) {
+      rows.push({ name, direct: "failed", relay: "-", note: String(e).slice(0, 120) });
+    }
+  }
+
   if (keys.tdxId && keys.tdxSecret) {
     let token = "";
     const body = new URLSearchParams({ grant_type: "client_credentials", client_id: keys.tdxId, client_secret: keys.tdxSecret }).toString();

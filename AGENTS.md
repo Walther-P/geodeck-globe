@@ -13,11 +13,15 @@ GeoDeck Globe：手機優先的 3D 地球情報地圖（Vite + TypeScript + MapL
 - `src/data/`：各資料來源的讀取與解析（`tdx.ts`、`cwa.ts`、`weather.ts`、`sky.ts`、`parking.ts`…）
 - `src/ui/`：此刻列、地點卡、搜尋、收藏、設定
 - `worker/relay.ts`：轉送白名單（純函式，有測試）
+- `worker/resolve.ts` + `/api/resolve`：追 Google 地圖分享短網址到實際地點；`src/data/maplinks.ts` 解析各種地圖連結
+- `src/data/google.ts`：選填的 Google 地點搜尋（使用者自己的金鑰，存在 `keys().google`）
+- `src/ui/locate.ts`：定位藍點、精度圈、指南針扇形（iOS 要在點擊當下要求方向權限）
 
 ## 常用指令
 
 - `npm ci`、`npm test`、`npm run build`（提交前兩者都必須通過）
-- `npm run screenshots`：用假資料截手機畫面（需先 build，環境變數 `CHROMIUM_PATH` 可指定瀏覽器）
+- `npm run screenshots`：用假資料截手機畫面並做煙霧測試（停車／交通狀態列不能有錯誤、定位扇形、
+  分享連結能打開地點）；CI 部署前會跑，失敗就不部署（需先 build，`CHROMIUM_PATH` 可指定瀏覽器）
 - `npm run probe`：實測所有資料來源（CI 每次都會跑，結果在 Actions Summary）
 
 ## 必須遵守
@@ -29,6 +33,7 @@ GeoDeck Globe：手機優先的 3D 地球情報地圖（Vite + TypeScript + MapL
 3. **資料誠實**：顯示來源與時間；沒有時間的即時數字不當成即時；即時車位超過 5 分鐘顯示「?」
    （`LIVE_MAX_AGE_MS`）；缺值顯示「—」或「未知」，不要當成 0 或「沒有」。
 4. **不要用會計費的服務**（Google Places／Routes／3D Tiles 等）當預設功能；要加先問擁有者。
+   Google 地點搜尋只在使用者自己填了金鑰時才載入。
 5. **手機優先**：改介面後跑 `npm run screenshots`，看 393×852 直向與 852×393 橫向，按鈕不能互相遮住。
    觸控目標至少 40px；輸入框字級 16px（避免 iOS 放大）。
 6. **效能**：手機上不要每格重建大量圖層；資料更新用 `setData`。Starlink 這類數千點的圖層要降頻。

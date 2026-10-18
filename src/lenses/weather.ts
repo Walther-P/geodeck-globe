@@ -5,7 +5,7 @@ import { cyclones, warnings, type Cyclone, type Warning } from "../data/cwa";
 import { hasCwa } from "../data/keys";
 import { cloudLayer, cloudTiles, cloudTime, radarFrames, type RadarFrame } from "../data/sky";
 import { ago, clock, dateTime } from "../lib/time";
-import { escapeHtml as esc } from "../lib/util";
+import { circlePolygon, escapeHtml as esc } from "../lib/util";
 import { EMPTY, addLayers, hideLayers, setData } from "../map/globe";
 import { every, type AppContext, type Chip, type Lens } from "./lens";
 
@@ -233,7 +233,7 @@ export class WeatherLens implements Lens {
       if (now && future.length) lines.push(line(s.id, [[now.lng, now.lat], ...future.map((f) => [f.lng, f.lat] as [number, number])], true));
       for (const f of s.fixes)
         dots.push({ type: "Feature", properties: { id: s.id, name: s.name, forecast: f.forecast, current: f === now }, geometry: { type: "Point", coordinates: [f.lng, f.lat] } });
-      if (now?.radius15Km) radii.push(circle(now.lng, now.lat, now.radius15Km, s.id));
+      if (now?.radius15Km) radii.push(circlePolygon(now.lng, now.lat, now.radius15Km, { id: s.id }));
     }
     setData(map, "wx-storm-lines", lines.length ? { type: "FeatureCollection", features: lines } : EMPTY);
     setData(map, "wx-storm-points", { type: "FeatureCollection", features: dots });
@@ -321,16 +321,4 @@ export class WeatherLens implements Lens {
 
 function line(id: string, coords: Array<[number, number]>, forecast: boolean): GeoJSON.Feature {
   return { type: "Feature", properties: { id, forecast }, geometry: { type: "LineString", coordinates: coords } };
-}
-
-/** Geodesic-enough circle polygon for wind radii (tens to hundreds of km). */
-export function circle(lng: number, lat: number, km: number, id: string, steps = 64): GeoJSON.Feature {
-  const coords: Array<[number, number]> = [];
-  for (let i = 0; i <= steps; i++) {
-    const a = (i / steps) * Math.PI * 2;
-    const dLat = (km / 111.32) * Math.cos(a);
-    const dLng = (km / (111.32 * Math.cos((lat * Math.PI) / 180))) * Math.sin(a);
-    coords.push([lng + dLng, lat + dLat]);
-  }
-  return { type: "Feature", properties: { id }, geometry: { type: "Polygon", coordinates: [coords] } };
 }

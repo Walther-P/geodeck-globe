@@ -18,6 +18,8 @@
 | 公路影像目錄 | 高速公路局、公路局影像（座標與名稱來自 GeoDeck 0.7 的目錄快照，2026-09-20） | 打包；影像本身由主管機關伺服器提供 | 各主管機關 | 手動重建 |
 | 停車場影像關聯 | 人工核對（目前：冷水坑 1 號停車場入口） | 打包 `parking-cameras.json` | — | 90 天未複核自動停用 |
 | 地點搜尋、反查地名 | [Photon](https://photon.komoot.io)（OpenStreetMap） | 直連 | ODbL；公共伺服器合理使用 | — |
+| 地點搜尋（選填） | Google Places（Maps JavaScript API 的 Places 程式庫） | 使用者自己的 Google 金鑰，瀏覽器直接載入；不畫 Google 地圖 | Google Maps Platform 條款；費用由金鑰擁有者負擔 | 即時 |
+| 分享連結解析 | Google 地圖短網址（maps.app.goo.gl）→ 本站 `/api/resolve` 跟隨轉址，必要時讀頁面上的座標 | 只接受 Google 地圖網址、只跟隨 Google 網域，結果快取 1 天 | — | — |
 
 ## 公路影像目錄的處理
 

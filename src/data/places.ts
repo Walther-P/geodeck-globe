@@ -9,6 +9,10 @@ export interface Place extends Point {
   title: string;
   subtitle?: string;
   country?: string;
+  /** Google place id when the place came from Google search. */
+  googleId?: string;
+  /** Where the result came from, shown in search results. */
+  source?: string;
 }
 
 export interface SavedPlace extends Place {
@@ -98,19 +102,47 @@ export function parsePhoton(d: { features?: PhotonFeature[] }): Place[] {
   return out;
 }
 
-export async function searchPlaces(text: string, near: Point | null, signal?: AbortSignal): Promise<Place[]> {
+export interface SearchResult {
+  places: Place[];
+  /** Why Google results are missing, when a Google key is set but failed. */
+  googleError?: string;
+}
+
+/**
+ * Coordinates, then saved places, then Google (when the visitor set their own
+ * key) and OpenStreetMap side by side, Google first.
+ */
+export async function searchPlaces(
+  text: string,
+  near: Point | null,
+  signal?: AbortSignal,
+  google?: (q: string, near: Point | null) => Promise<Place[]>,
+): Promise<SearchResult> {
   const q = text.trim();
   const coords = parseCoordinates(q);
-  if (coords) return [{ ...coords, title: q }];
-  if (!q) return [];
-  const local = savedPlaces().filter((p) => p.title.includes(q) || p.note.includes(q));
+  if (coords) return { places: [{ ...coords, title: q }] };
+  if (!q) return { places: [] };
+  const local = savedPlaces()
+    .filter((p) => p.title.includes(q) || p.note.includes(q))
+    .map((p) => ({ ...p, source: "收藏" }));
   const params = new URLSearchParams({ q, limit: "8" });
   if (near) {
     params.set("lat", near.lat.toFixed(3));
     params.set("lon", near.lng.toFixed(3));
   }
-  const remote = parsePhoton(await getJson(`https://photon.komoot.io/api/?${params}`, { signal, timeout: 12000 }));
-  return [...local, ...remote];
+  const [g, osm] = await Promise.allSettled([
+    google ? google(q, near) : Promise.resolve([]),
+    getJson(`https://photon.komoot.io/api/?${params}`, { signal, timeout: 12000 }).then((d) => parsePhoton(d as { features?: PhotonFeature[] })),
+  ]);
+  const fromGoogle = g.status === "fulfilled" ? g.value : [];
+  const fromOsm = (osm.status === "fulfilled" ? osm.value : []).map((p) => ({ ...p, source: "OpenStreetMap" }));
+  if (!fromGoogle.length && !fromOsm.length && osm.status === "rejected" && (!google || g.status === "rejected")) throw osm.reason;
+  // Drop OSM hits that are the same spot Google already returned.
+  const dup = (p: Place) => fromGoogle.some((x) => Math.abs(x.lat - p.lat) < 0.0006 && Math.abs(x.lng - p.lng) < 0.0006);
+  return {
+    places: [...local, ...fromGoogle, ...fromOsm.filter((p) => !dup(p))],
+    googleError: google && g.status === "rejected" ? (g.reason as Error).message : undefined,
+  };
 }
 
 export function googleSearchUrl(text: string): string {
@@ -142,8 +174,12 @@ export function navigationUrl(app: NavApp, dest: Place, mode: TravelMode = "driv
     }
     case "waze":
       return `https://waze.com/ul?${new URLSearchParams({ ll, navigate: "yes" })}`;
-    default:
-      return `https://www.google.com/maps/dir/?${new URLSearchParams({ api: "1", destination: ll, travelmode: mode })}`;
+    default: {
+      // A Google place id opens the actual venue (hours, reviews) in Google Maps.
+      const q = new URLSearchParams({ api: "1", destination: dest.googleId ? dest.title : ll, travelmode: mode });
+      if (dest.googleId) q.set("destination_place_id", dest.googleId);
+      return `https://www.google.com/maps/dir/?${q}`;
+    }
   }
 }
 

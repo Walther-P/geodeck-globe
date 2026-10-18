@@ -41,7 +41,8 @@ export function openPlace(deps: PlaceDeps, p: Place, intent?: "navigate" | "walk
     "place",
     formatCoord(p),
     title,
-    `${intent ? '<div id="plNav"></div>' : ""}
+    `${inTaiwan(p) ? '<div class="actions"><button class="btn primary" id="plParkNear">🅿 這附近停車</button></div>' : ""}
+    ${intent ? '<div id="plNav"></div>' : ""}
     <h2>此刻</h2>
     <div id="plNow" class="stat-row"><div class="stat"><b>…</b><small>天氣</small></div><div class="stat"><b>…</b><small>降雨</small></div><div class="stat"><b>…</b><small>空氣</small></div></div>
     <p id="plRain" class="muted"></p>
@@ -62,6 +63,14 @@ export function openPlace(deps: PlaceDeps, p: Place, intent?: "navigate" | "walk
       }
     },
   );
+
+  body.querySelector("#plParkNear")?.addEventListener("click", () => {
+    deps.sheet.close();
+    deps.focusLens("parking");
+    deps.map.flyTo({ center: [p.lng, p.lat], zoom: Math.max(deps.map.getZoom(), 16.5), duration: 1200 });
+    // Keep the destination pinned while looking for parking around it.
+    pin = new Marker({ element: Object.assign(document.createElement("div"), { className: "pin" }) }).setLngLat([p.lng, p.lat]).addTo(deps.map);
+  });
 
   const renderNav = () => {
     const app = defaultNavApp(p, navPreference());

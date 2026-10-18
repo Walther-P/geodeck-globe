@@ -88,3 +88,15 @@ export function formatCoord(p: Point, digits = 4): string {
 export function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v));
 }
+
+/** Circle as a polygon, close enough for radii of metres to hundreds of km. */
+export function circlePolygon(lng: number, lat: number, km: number, properties: Record<string, unknown> = {}, steps = 64): GeoJSON.Feature {
+  const coords: Array<[number, number]> = [];
+  for (let i = 0; i <= steps; i++) {
+    const a = (i / steps) * Math.PI * 2;
+    const dLat = (km / 111.32) * Math.cos(a);
+    const dLng = (km / (111.32 * Math.cos((lat * Math.PI) / 180))) * Math.sin(a);
+    coords.push([lng + dLng, lat + dLat]);
+  }
+  return { type: "Feature", properties, geometry: { type: "Polygon", coordinates: [coords] } };
+}

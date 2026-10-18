@@ -50,7 +50,7 @@ describe("relay allowlist", () => {
 
 describe("keys", () => {
   it("strips whitespace pasted with a key and masks it for display", () => {
-    expect(normalizeKeys({ tdxId: "  abc-123 \n", tdxSecret: "s e c", cwa: "CWA-1234-5678" })).toEqual({ tdxId: "abc-123", tdxSecret: "sec", cwa: "CWA-1234-5678" });
+    expect(normalizeKeys({ tdxId: "  abc-123 \n", tdxSecret: "s e c", cwa: "CWA-1234-5678" })).toEqual({ tdxId: "abc-123", tdxSecret: "sec", cwa: "CWA-1234-5678", google: "" });
     expect(mask("")).toBe("未設定");
     expect(mask("CWA-1234-5678-ABCD")).toBe("CWA-••••ABCD");
   });

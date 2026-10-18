@@ -9,17 +9,19 @@ export interface Keys {
   tdxId: string;
   tdxSecret: string;
   cwa: string;
+  /** Optional Google Maps Platform key for place search (Places API). */
+  google: string;
 }
 
 const STORAGE = "gdg.keys.v1";
-const EMPTY: Keys = { tdxId: "", tdxSecret: "", cwa: "" };
+const EMPTY: Keys = { tdxId: "", tdxSecret: "", cwa: "", google: "" };
 
 let listeners: Array<(k: Keys) => void> = [];
 let current: Keys = normalizeKeys(read<Partial<Keys>>(STORAGE, {}));
 
 export function normalizeKeys(raw: Partial<Keys> | null | undefined): Keys {
   const clean = (v: unknown) => (typeof v === "string" ? v.trim().replace(/\s+/g, "") : "");
-  return { tdxId: clean(raw?.tdxId), tdxSecret: clean(raw?.tdxSecret), cwa: clean(raw?.cwa) };
+  return { tdxId: clean(raw?.tdxId), tdxSecret: clean(raw?.tdxSecret), cwa: clean(raw?.cwa), google: clean(raw?.google) };
 }
 
 export function keys(): Keys {
@@ -28,10 +30,11 @@ export function keys(): Keys {
 
 export const hasTdx = () => !!(current.tdxId && current.tdxSecret);
 export const hasCwa = () => !!current.cwa;
+export const hasGoogle = () => !!current.google;
 
 export function saveKeys(next: Partial<Keys>): boolean {
   current = normalizeKeys({ ...current, ...next });
-  const ok = current.tdxId || current.tdxSecret || current.cwa ? write(STORAGE, current) : (remove(STORAGE), true);
+  const ok = Object.values(current).some(Boolean) ? write(STORAGE, current) : (remove(STORAGE), true);
   for (const fn of listeners) fn(current);
   return ok;
 }

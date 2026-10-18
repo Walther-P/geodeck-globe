@@ -1,4 +1,5 @@
 import { MAX_RELAY_BYTES, isSameOriginRequest, matchRelayRule } from "./relay";
+import { allowedHop, coordinatesFromHtml, hasCoordinates, resolvableStart } from "./resolve";
 
 interface Env {
   ASSETS: Fetcher;
@@ -69,10 +70,75 @@ async function relay(request: Request, ctx: ExecutionContext): Promise<Response>
   return response;
 }
 
+const BROWSER_HEADERS = {
+  "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+  "accept-language": "zh-TW,zh;q=0.9,en;q=0.6",
+  accept: "text/html,application/xhtml+xml",
+};
+
+function json(data: unknown, ttl = 0): Response {
+  return new Response(JSON.stringify(data), {
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": ttl ? `public, max-age=${ttl}` : "no-store",
+      "x-relay-cache": "MISS",
+    },
+  });
+}
+
+/** Follows a Google Maps share link to the place it names (see worker/resolve.ts). */
+async function resolveLink(request: Request, ctx: ExecutionContext): Promise<Response> {
+  const self = new URL(request.url);
+  if (!isSameOriginRequest(request.headers, self.origin)) return fail(403, "for this site only");
+  const start = resolvableStart(self.searchParams.get("u"));
+  if (!start) return fail(400, "not a Google Maps link");
+  if (hasCoordinates(start.href)) return json({ url: start.href });
+  const cache = (caches as unknown as { default: Cache }).default;
+  const key = new Request(`https://resolve.invalid/?u=${encodeURIComponent(start.href)}`);
+  const hit = await cache.match(key);
+  if (hit) return hit;
+
+  let url = start;
+  for (let hop = 0; hop < 6; hop++) {
+    let r: Response;
+    try {
+      r = await fetch(url.href, { redirect: "manual", headers: BROWSER_HEADERS, signal: AbortSignal.timeout(10000) });
+    } catch {
+      return fail(504, "Google did not answer");
+    }
+    const location = r.headers.get("location");
+    if (r.status >= 300 && r.status < 400 && location) {
+      const next = new URL(location, url);
+      // Consent interstitials wrap the real destination in ?continue=.
+      const wrapped = next.hostname === "consent.google.com" ? next.searchParams.get("continue") : null;
+      const target = wrapped ? new URL(wrapped) : next;
+      if (!allowedHop(target)) return fail(400, "link leaves Google Maps");
+      url = target;
+      await r.body?.cancel();
+      if (hasCoordinates(url.href)) break;
+      continue;
+    }
+    if (!r.ok) return fail(502, `Google answered ${r.status}`);
+    if (hasCoordinates(url.href)) {
+      await r.body?.cancel();
+      break;
+    }
+    const html = (await r.text()).slice(0, 900_000);
+    const found = coordinatesFromHtml(html);
+    const out = json({ url: url.href, ...(found ?? {}) }, found ? 86400 : 0);
+    if (found) ctx.waitUntil(cache.put(key, out.clone()));
+    return out;
+  }
+  const out = json({ url: url.href }, 86400);
+  ctx.waitUntil(cache.put(key, out.clone()));
+  return out;
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/relay") return relay(request, ctx);
+    if (url.pathname === "/api/resolve") return resolveLink(request, ctx);
     if (url.pathname.startsWith("/api/")) return fail(404, "not found");
     return env.ASSETS.fetch(request);
   },

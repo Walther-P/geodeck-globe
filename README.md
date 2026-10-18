@@ -10,7 +10,9 @@ GeoDeck 0.7（[KTAK-DEV/geodeck](https://github.com/Walther-P/KTAK-DEV/tree/main
 
 | 區塊 | 內容 | 需要金鑰？ |
 | --- | --- | --- |
-| 地圖 | 免費深色向量地圖（OpenFreeMap），可從太空地球一路放大到 3D 建築；指北、3D 傾斜、定位；夜視／熱感／CRT 畫面濾鏡 | 不用 |
+| 地圖 | 免費深色向量地圖（OpenFreeMap），可從太空地球一路放大到 3D 建築；指北、3D 傾斜；夜視／熱感／CRT 畫面濾鏡 | 不用 |
+| 定位 | 藍點跟著 GPS 移動、精度範圍、手機面向的扇形（指南針；iPhone 第一次會詢問方向權限） | 不用 |
+| 搜尋 | 地名、路名、座標（OpenStreetMap）；**貼上或分享 Google／Apple 地圖連結**直接跳到同一個地點；加上自己的 Google 金鑰後可搜到和 Google 地圖一樣的店家 | Google 搜尋選填 |
 | 此刻列 | 我的位置或地圖中心：天氣、三小時內何時下雨、AQI、附近 6 小時內 M4+ 地震、所在縣市天氣特報 | 特報要氣象署 |
 | 天氣視角 | 雷達回波（可回放）、向日葵衛星雲圖、颱風路徑與七級風圈、天氣特報 | 颱風、特報要氣象署 |
 | 交通視角 | 公路影像（高公局、公路局）、警政署測速點、公車即時位置；有 TDX 時補上更多道路影像 | 公車要 TDX |
@@ -25,6 +27,9 @@ GeoDeck 0.7（[KTAK-DEV/geodeck](https://github.com/Walther-P/KTAK-DEV/tree/main
 
 - **TDX 運輸資料流通服務**（免費）：<https://tdx.transportdata.tw/register> 註冊 → 會員中心 → API 金鑰，取得 Client Id 與 Client Secret。
 - **中央氣象署開放資料**（免費）：<https://opendata.cwa.gov.tw/user/authkey> 登入 → 取得授權碼（CWA- 開頭）。
+
+另外可選填 **Google 地點搜尋金鑰**（Google Cloud：啟用 Maps JavaScript API 與 Places API (New)，金鑰限制在本站網址；
+需要帳單帳戶，每月有免費用量）。沒有這把金鑰也能貼上 Google 地圖的分享連結。
 
 金鑰只存在該使用者手機的瀏覽器（localStorage），直接送到官方網站；只有官方網站不允許瀏覽器直接讀取時，
 才會經過本站 Worker 的轉送（`/relay`），轉送不儲存、不快取、不記錄帶金鑰的請求（見 `worker/relay.ts`）。
@@ -66,6 +71,13 @@ npm run probe        # 實測所有資料來源（TEST_URL 指向執行中的站
 - 所有資料都可能延遲、不完整或錯誤，不能當成緊急應變或行車安全的唯一依據。
 
 完整來源與授權見 [docs/DATA-SOURCES.md](docs/DATA-SOURCES.md)。
+
+## 和 Google 地圖互通
+
+- **Google 地圖 → 這裡**：在 Google 地圖的地點按「分享」→「複製連結」，回來點搜尋框右邊的 ⧉（或長按貼上）。
+  Android 把 GeoDeck 加到主畫面後，分享選單會直接出現 GeoDeck。短網址（maps.app.goo.gl）由本站 Worker 的
+  `/api/resolve` 追到實際地點（`worker/resolve.ts`）。
+- **這裡 → Google 地圖**：地點卡的「用 Google 地圖導航」；從 Google 搜尋來的地點會直接打開那家店。
 
 ## 做不到的事（網頁 App 的限制）
 
