@@ -1,0 +1,31 @@
+# 資料來源與授權
+
+| 資料 | 來源 | 取得方式 | 授權／條款 | 更新 |
+| --- | --- | --- | --- | --- |
+| 底圖向量圖磚、字型 | [OpenFreeMap](https://openfreemap.org)（OpenMapTiles 格式） | 瀏覽器直連 | 資料 © OpenStreetMap 貢獻者（ODbL）；圖磚架構 © OpenMapTiles | 每週 |
+| 離線陸地輪廓 | [Natural Earth](https://www.naturalearthdata.com) 1:110m（world-atlas） | 打包在 `public/data/land-110m.json` | 公有領域 | 固定 |
+| 天氣、15 分鐘降雨、逐時預報 | [Open-Meteo](https://open-meteo.com) | 直連 | CC BY 4.0；免費方案限非商業 | 每小時（模式） |
+| 空氣品質 | Open-Meteo Air Quality（CAMS） | 直連 | CC BY 4.0 | 每小時（模式） |
+| 雷達回波 | [RainViewer](https://www.rainviewer.com/api.html) | 直連 | RainViewer 免費 API 條款（需標示） | 約 10 分鐘 |
+| 衛星雲圖 | [NASA GIBS](https://www.earthdata.nasa.gov/gibs)：Himawari／GOES 紅外線、MODIS | 直連 | NASA 開放資料 | 10 分鐘至每日 |
+| 全球地震 | [USGS](https://earthquake.usgs.gov/earthquakes/feed/) 24 小時 M2.5+ | 直連，失敗改轉送 | 公有領域 | 每分鐘 |
+| 地震報告、颱風路徑、天氣特報 | [中央氣象署開放資料](https://opendata.cwa.gov.tw) E-A0015-001、E-A0016-001、W-C0034-005、W-C0033-001 | 使用者自己的授權碼，直連，失敗改轉送（不快取） | 政府資料開放授權條款第 1 版 | 即時 |
+| 航班 | [adsb.lol](https://adsb.lol)（社群 ADS-B 接收站） | 直連，失敗改轉送（快取 8 秒） | ODbL | 即時 |
+| 衛星軌道 | [CelesTrak](https://celestrak.org) GP 資料，SGP4 推算 | 轉送（快取 4 小時）；建置時另存快照 | CelesTrak 使用條款 | 每日 |
+| 停車目錄 | OpenStreetMap ＋ 臺北、新北、桃園、臺中、臺南開放資料（GeoDeck 0.7 整理，2026-09-27） | 打包在 `public/data/parking/` | ODbL（含 OSM）＋政府資料開放授權條款；見 `public/data/parking/LICENSE.md` | 手動重建 |
+| 即時車位、公車動態、道路影像（TDX） | [TDX 運輸資料流通服務](https://tdx.transportdata.tw) | 使用者自己的金鑰，直連，失敗改轉送（不快取） | 政府資料開放授權條款第 1 版 | 即時 |
+| 測速執法點 | 內政部警政署「測速執法設置點」[資料集 7320](https://data.gov.tw/dataset/7320)（2026-09-20 快照，1,895 筆） | 打包 | 政府資料開放授權條款第 1 版 | 手動重建 |
+| 公路影像目錄 | 高速公路局、公路局影像（座標與名稱來自 GeoDeck 0.7 的目錄快照，2026-09-20） | 打包；影像本身由主管機關伺服器提供 | 各主管機關 | 手動重建 |
+| 停車場影像關聯 | 人工核對（目前：冷水坑 1 號停車場入口） | 打包 `parking-cameras.json` | — | 90 天未複核自動停用 |
+| 地點搜尋、反查地名 | [Photon](https://photon.komoot.io)（OpenStreetMap） | 直連 | ODbL；公共伺服器合理使用 | — |
+
+## 公路影像目錄的處理
+
+GeoDeck 0.7 的目錄有 11,514 支鏡頭，其中 4,302 支的影像網址是公路主管機關自己的伺服器
+（freeway.gov.tw、thb.gov.tw），本站直接顯示。其餘影像網址指向第三方鏡像站，本站只保留位置與
+原站連結，不直接轉載影像。
+
+## 轉送伺服器（`/relay`）
+
+只轉送 `worker/relay.ts` 列出的主機與路徑；只接受本站網頁發出的請求；帶使用者金鑰的請求一律不快取、
+不在使用者之間共用；回應上限 12 MB。

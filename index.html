@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <meta name="theme-color" content="#04080d" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="GeoDeck" />
+    <meta name="description" content="手機優先的 3D 地球情報地圖：雷達、雲圖、颱風、地震、航班、衛星、道路影像、停車與公車即時資訊。" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icon-192.png" />
+    <title>GeoDeck Globe</title>
+  </head>
+  <body>
+    <main id="app">
+      <div id="map" aria-label="3D 地球地圖"></div>
+      <div id="fx" class="fx" aria-hidden="true"></div>
+      <div id="crosshair" class="crosshair" aria-hidden="true"><span></span></div>
+
+      <header class="top">
+        <form id="searchForm" class="search" role="search">
+          <span class="search-mark" aria-hidden="true">⌕</span>
+          <input id="search" type="search" enterkeyhint="search" placeholder="搜尋地點、地址或座標" aria-label="搜尋地點、地址或座標" autocomplete="off" />
+          <button id="searchClear" type="button" class="ghost hidden" aria-label="清除搜尋">×</button>
+        </form>
+        <button id="openSaved" class="round" aria-label="收藏與停車位置">☆</button>
+        <button id="openSettings" class="round" aria-label="設定與資料金鑰">⚙</button>
+        <div id="searchResults" class="results hidden" role="listbox" aria-label="搜尋結果"></div>
+      </header>
+
+      <button id="now" class="now" aria-label="此刻狀態，點開看詳細">
+        <span class="now-dot" aria-hidden="true"></span><span id="nowText">取得此刻天氣…</span>
+      </button>
+
+      <aside class="side" aria-label="地圖工具">
+        <button id="locate" class="tool" aria-label="定位到我的位置"><span aria-hidden="true">◎</span></button>
+        <button id="tilt" class="tool" aria-label="切換 3D 視角"><span aria-hidden="true">3D</span></button>
+        <button id="north" class="tool" aria-label="指北"><span id="northArrow" aria-hidden="true">▲</span></button>
+        <button id="filter" class="tool" aria-label="切換畫面濾鏡"><span aria-hidden="true">◐</span></button>
+      </aside>
+
+      <div id="readout" class="readout" aria-hidden="true"></div>
+
+      <section id="strip" class="strip hidden" aria-live="polite"></section>
+
+      <nav class="dock" aria-label="視角">
+        <button data-lens="weather" aria-pressed="false"><span aria-hidden="true">☂</span>天氣</button>
+        <button data-lens="traffic" aria-pressed="false"><span aria-hidden="true">⛟</span>交通</button>
+        <button data-lens="parking" aria-pressed="false"><span aria-hidden="true">P</span>停車</button>
+        <button data-lens="sky" aria-pressed="false"><span aria-hidden="true">✈</span>天空</button>
+      </nav>
+
+      <section id="sheet" class="sheet hidden" role="dialog" aria-modal="false" aria-labelledby="sheetTitle">
+        <div class="sheet-grip" aria-hidden="true"></div>
+        <header class="sheet-head">
+          <div>
+            <p id="sheetEyebrow" class="eyebrow"></p>
+            <h1 id="sheetTitle"></h1>
+          </div>
+          <button id="sheetClose" class="ghost close" aria-label="關閉">×</button>
+        </header>
+        <div id="sheetBody" class="sheet-body"></div>
+      </section>
+
+      <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+      <div id="update" class="update hidden"><span>新版本已備妥</span><button id="applyUpdate">更新</button></div>
+      <noscript><p class="noscript">請啟用 JavaScript 才能使用地圖。</p></noscript>
+    </main>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

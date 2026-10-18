@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "links": [
+    {
+      "parkingIds": ["taipei-TPE0508", "osm-way-357034633"],
+      "parkingName": "冷水坑1號停車場",
+      "cameraId": "tour-000002",
+      "image": "https://i.ytimg.com/vi/GB64WeZZQPQ/sddefault_live.jpg",
+      "coverage": "entrance",
+      "verifiedAt": "2026-09-27T15:55:00Z",
+      "evidenceUrl": "https://www.ymsnp.gov.tw/ch/sglarticle/lengshuikeng-parking-lot",
+      "note": "入口及部分車格；官方說明鏡頭由冷水坑遊客服務站拍攝停車場入口。"
+    }
+  ]
+}

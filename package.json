@@ -1,0 +1,32 @@
+{
+  "name": "geodeck-globe",
+  "version": "0.1.0",
+  "description": "手機優先的 3D 地球情報地圖：天氣、交通、停車、天空即時資訊（台灣優先）",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "dev:worker": "wrangler dev --port 8787",
+    "build": "tsc --noEmit && tsc -p tsconfig.worker.json --noEmit && vite build && node scripts/stamp-sw.mjs",
+    "test": "vitest run",
+    "screenshots": "node scripts/screenshots.mjs",
+    "probe": "node scripts/live-probe.mjs",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "dependencies": {
+    "maplibre-gl": "^6.14.0",
+    "satellite.js": "^7.1.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261018.1",
+    "@maplibre/maplibre-gl-style-spec": "^26.4.4",
+    "@playwright/test": "^1.63.0",
+    "@types/geojson": "^7946.0.16",
+    "topojson-client": "^3.1.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.1",
+    "world-atlas": "^2.0.2",
+    "wrangler": "^4.136.0"
+  }
+}
