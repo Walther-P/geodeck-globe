@@ -222,15 +222,18 @@ for (const [name, w, h, view, lenses, tdx] of [
     localStorage.setItem("gdg.lenses.v1", JSON.stringify(lenses));
     if (appKeys) localStorage.setItem("gdg.keys.v1", JSON.stringify(appKeys));
   }, [view, lenses, appKeys]);
+  // The probe's own TDX calls above share this key's five-a-minute budget:
+  // let that minute pass so the app starts the way a visitor's would.
+  if (appKeys) await new Promise((r) => setTimeout(r, 65000));
   const p = await ctx.newPage();
   await p.goto(base);
   await p.waitForTimeout(12000);
   if (appKeys) {
-    // The probe's own TDX calls may have used this minute's budget; the app waits its turn.
+    // Wait for real counts; a rate-limited first try refreshes on its own a minute later.
     let status = "";
-    for (let i = 0; i < 18; i++) {
+    for (let i = 0; i < 30; i++) {
       status = (await p.textContent("#strip .strip-status").catch(() => "")) ?? "";
-      if (status && !/正在更新|載入中/.test(status)) break;
+      if (/停車場 \d+\/\d+/.test(status)) break;
       await p.waitForTimeout(5000);
     }
     const counts = status.match(/停車場 (\d+)\/(\d+)/);
