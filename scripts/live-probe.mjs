@@ -115,13 +115,22 @@ const results = await page.evaluate(async (keys) => {
     );
     if (token) {
       const h = { headers: { authorization: `Bearer ${token}`, accept: "application/json" } };
+      // Stay under TDX's per-second limit, as the app does.
+      const pause = () => new Promise((r) => setTimeout(r, 1200));
       const tdx = "https://tdx.transportdata.tw/api/basic";
+      await pause();
       await probe("TDX CarPark Tainan", `${tdx}/v1/Parking/OffStreet/CarPark/City/Tainan?$format=JSON&$top=2`, (d) => `keys ${Object.keys(d)}; park keys ${Object.keys(d.CarParks?.[0] ?? {}).join(",")}`, h);
+      await pause();
       await probe("TDX Availability Tainan", `${tdx}/v1/Parking/OffStreet/ParkingAvailability/City/Tainan?$format=JSON&$top=2`, (d) => `keys ${Object.keys(d)}; row ${JSON.stringify(d.ParkingAvailabilities?.[0] ?? {}).slice(0, 220)}`, h);
+      await pause();
       await probe("TDX CCTV Freeway", `${tdx}/v2/Road/Traffic/CCTV/Freeway?$format=JSON&$top=1`, (d) => `keys ${Object.keys(d)}; row ${JSON.stringify(d.CCTVs?.[0] ?? {}).slice(0, 220)}`, h);
+      await pause();
       await probe("TDX CCTV City Tainan", `${tdx}/v2/Road/Traffic/CCTV/City/Tainan?$format=JSON&$top=1`, (d) => `row ${JSON.stringify(d.CCTVs?.[0] ?? d[0] ?? {}).slice(0, 200)}`, h);
-      await probe("TDX OnStreet segment Tainan", `${tdx}/v1/Parking/OnStreet/ParkingSegment/City/Tainan?$format=JSON&$top=1`, (d) => `keys ${Object.keys(d)}; row ${JSON.stringify((d.ParkingSegments ?? d.CurbParkingSegments ?? [])[0] ?? d).slice(0, 320)}`, h);
-      await probe("TDX OnStreet availability Tainan", `${tdx}/v1/Parking/OnStreet/ParkingSegmentAvailability/City/Tainan?$format=JSON&$top=1`, (d) => `keys ${Object.keys(d)}; row ${JSON.stringify((d.ParkingSegmentAvailabilities ?? d.CurbParkingSegmentAvailabilities ?? [])[0] ?? d).slice(0, 320)}`, h);
+      await pause();
+      await probe("TDX OnStreet segment Tainan", `${tdx}/v1/Parking/OnStreet/ParkingSegment/City/Tainan?$format=JSON&$top=1`, (d) => { const r = (d.ParkingSegments ?? [])[0] ?? {}; return `row keys ${Object.keys(r)}; ${JSON.stringify(r).slice(0, 600)}`; }, h);
+      await pause();
+      await probe("TDX OnStreet availability Tainan", `${tdx}/v1/Parking/OnStreet/ParkingSegmentAvailability/City/Tainan?$format=JSON&$top=1`, (d) => { const r = (d.ParkingSegmentAvailabilities ?? d.CurbParkingSegmentAvailabilities ?? [])[0] ?? {}; return `keys ${Object.keys(d)}; row keys ${Object.keys(r)}; ${JSON.stringify(r).slice(0, 500)}`; }, h);
+      await pause();
       await probe("TDX CCTV City Taipei", `${tdx}/v2/Road/Traffic/CCTV/City/Taipei?$format=JSON&$top=1`, (d) => `row ${JSON.stringify(d.CCTVs?.[0] ?? d[0] ?? {}).slice(0, 260)}`, h);
       // Camera feeds through our Worker: does each answer with an image or MJPEG?
       for (const [label, cam] of [
@@ -138,6 +147,7 @@ const results = await page.evaluate(async (keys) => {
           rows.push({ name: label, direct: "failed", relay: "-", note: String(e).slice(0, 100) });
         }
       }
+      await pause();
       await probe("TDX Bus Tainan", `${tdx}/v2/Bus/RealTimeByFrequency/City/Tainan?$format=JSON&$top=1&$select=PlateNumb,RouteName,BusPosition,Speed,Azimuth,GPSTime,DutyStatus,BusStatus`, (d) => `row ${JSON.stringify(d[0] ?? {}).slice(0, 220)}`, h);
     }
   } else rows.push({ name: "TDX", direct: "skipped", relay: "skipped", note: "no PROBE_TDX_* secrets" });
@@ -150,7 +160,7 @@ const results = await page.evaluate(async (keys) => {
       const tc = d.records?.TropicalCyclones?.TropicalCyclone?.[0] ?? d.records?.tropicalCyclones?.tropicalCyclone?.[0] ?? {};
       const an = tc.AnalysisData ?? tc.analysisData ?? {};
       const fc = tc.ForecastData ?? tc.forecastData ?? {};
-      return `keys ${Object.keys(tc)}; analysis ${JSON.stringify((an.Fix ?? an.fix ?? [])[0] ?? an).slice(0, 260)}; forecast ${JSON.stringify((fc.Fix ?? fc.fix ?? [])[0] ?? fc).slice(0, 260)}`;
+      return `analysis ${JSON.stringify((an.Fix ?? an.fix ?? [])[0] ?? an).slice(0, 500)}; forecast ${JSON.stringify((fc.Fix ?? fc.fix ?? [])[0] ?? fc).slice(0, 500)}`;
     });
   } else rows.push({ name: "CWA", direct: "skipped", relay: "skipped", note: "no PROBE_CWA_KEY secret" });
   return rows;

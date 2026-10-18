@@ -27,7 +27,7 @@ async function fetchToken(): Promise<string> {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body,
-    route: "direct-then-relay",
+    route: "relay",
   }).catch((e: FeedError) => {
     throw new FeedError(e.status === 400 || e.status === 401 ? "TDX 金鑰無效，請檢查 Client ID 與 Client Secret" : `TDX 登入失敗：${e.message}`, e.status);
   });
@@ -49,21 +49,48 @@ export function forgetTdxToken(): void {
   remove(TOKEN_STORAGE);
 }
 
+// TDX's free tier allows only a few calls per second per key, and opening a
+// lens can ask for half a dozen feeds at once: send them one at a time.
+const SPACING_MS = 250;
+let queue: Promise<unknown> = Promise.resolve();
+let lastCall = 0;
+
+function paced<T>(fn: () => Promise<T>): Promise<T> {
+  const run = queue.catch(() => {}).then(async () => {
+    const wait = lastCall + SPACING_MS - Date.now();
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    lastCall = Date.now();
+    return fn();
+  });
+  queue = run;
+  return run;
+}
+
 export async function tdxGet<T>(path: string, params: Record<string, string> = {}, signal?: AbortSignal): Promise<T> {
   const url = `${TDX_BASE}${path}?${new URLSearchParams({ $format: "JSON", ...params })}`;
-  const attempt = async () =>
-    getJson<T>(url, {
-      headers: { authorization: `Bearer ${await tdxToken()}`, accept: "application/json" },
-      route: "direct-then-relay",
-      timeout: 20000,
-      signal,
-    });
+  const attempt = async () => {
+    const token = await tdxToken();
+    return paced(() =>
+      getJson<T>(url, {
+        headers: { authorization: `Bearer ${token}`, accept: "application/json" },
+        // TDX doesn't allow browser reads (no CORS), so always via our relay.
+        route: "relay",
+        timeout: 20000,
+        signal,
+      }),
+    );
+  };
   try {
     return await attempt();
   } catch (e) {
     // A token revoked or rotated early: retry once with a fresh one.
     if (e instanceof FeedError && e.status === 401) {
       forgetTdxToken();
+      return attempt();
+    }
+    // Over the per-second limit: wait a moment and try once more.
+    if (e instanceof FeedError && e.status === 429 && !signal?.aborted) {
+      await new Promise((r) => setTimeout(r, 1500));
       return attempt();
     }
     throw e;

@@ -147,10 +147,14 @@ export interface Cyclone {
   fixes: CycloneFix[];
 }
 
-function parseCoordinate(v: unknown) {
-  if (typeof v !== "string") return null;
-  const [lng, lat] = v.split(",").map((x) => Number(x.trim()));
-  return point(lat, lng);
+function parseCoordinate(f: unknown) {
+  // Older docs: coordinate "lng,lat"; the live feed (2026-10): CoordinateLongitude / CoordinateLatitude.
+  const joined = pick(f, "coordinate", "Coordinate");
+  if (typeof joined === "string") {
+    const [lng, lat] = joined.split(",").map((x) => Number(x.trim()));
+    return point(lat, lng);
+  }
+  return point(pick(f, "CoordinateLatitude", "coordinateLatitude", "Latitude"), pick(f, "CoordinateLongitude", "coordinateLongitude", "Longitude"));
 }
 
 export function parseCyclones(records: unknown): Cyclone[] {
@@ -160,19 +164,20 @@ export function parseCyclones(records: unknown): Cyclone[] {
     const fixes: CycloneFix[] = [];
     const read = (block: unknown, forecast: boolean) => {
       for (const f of list(pick(block, "fix", "Fix"))) {
-        const pos = parseCoordinate(pick(f, "coordinate", "Coordinate"));
+        const pos = parseCoordinate(f);
         if (!pos) continue;
-        let time = parseTime(pick(f, "fixTime", "FixTime"));
-        if (forecast) {
+        let time = parseTime(pick(f, "fixTime", "FixTime", "DateTime", "dateTime"));
+        if (forecast && time === null) {
           const init = parseTime(pick(f, "initTime", "InitTime"));
-          const tau = num(pick(f, "tau", "Tau"));
+          const tau = num(pick(f, "tau", "Tau", "ForecastHour"));
           time = init !== null && tau !== null ? init + tau * 3600000 : null;
         }
+        const circle = pick(f, "circleOf15Ms", "CircleOf15Ms");
         fixes.push({
           ...pos,
           time,
           windMs: num(pick(f, "maxWindSpeed", "MaxWindSpeed")),
-          radius15Km: num(pick(pick(f, "circleOf15Ms", "CircleOf15Ms"), "radius", "Radius")),
+          radius15Km: num(typeof circle === "object" ? pick(circle, "radius", "Radius") : circle),
           forecast,
         });
       }
@@ -181,7 +186,7 @@ export function parseCyclones(records: unknown): Cyclone[] {
     read(pick(c, "forecastData", "ForecastData"), true);
     if (!fixes.length) continue;
     const name = String(pick(c, "cwaTyphoonName", "CwaTyphoonName") || pick(c, "typhoonName", "TyphoonName") || "熱帶性低氣壓");
-    out.push({ id: String(pick(c, "cwaTyNo", "cwaTdNo", "typhoonName") ?? name), name, fixes });
+    out.push({ id: String(pick(c, "cwaTyNo", "CwaTyNo", "cwaTdNo", "CwaTdNo", "typhoonName", "TyphoonName") ?? name), name, fixes });
   }
   return out;
 }

@@ -101,6 +101,26 @@ describe("CWA", () => {
     expect(intensityRank("5弱")).toBeGreaterThan(intensityRank("4級"));
   });
 
+  it("reads the live typhoon feed's split coordinate fields", () => {
+    const c = parseCyclones({
+      TropicalCyclones: {
+        TropicalCyclone: [
+          {
+            Year: "2026",
+            TyphoonName: "CHAMPI",
+            CwaTyphoonName: "蓮花",
+            CwaTyNo: "25",
+            AnalysisData: { Fix: [{ DateTime: "2026-10-14T08:00:00+08:00", CoordinateLongitude: "160.3", CoordinateLatitude: "18.2", MaxWindSpeed: "33", CircleOf15Ms: { Radius: "180" } }] },
+            ForecastData: { Fix: [{ InitTime: "2026-10-14T08:00:00+08:00", Tau: "12", CoordinateLongitude: "158.9", CoordinateLatitude: "19.0" }] },
+          },
+        ],
+      },
+    });
+    expect(c[0]).toMatchObject({ id: "25", name: "蓮花" });
+    expect(c[0].fixes[0]).toMatchObject({ lat: 18.2, lng: 160.3, windMs: 33, radius15Km: 180, forecast: false, time: Date.parse("2026-10-14T00:00:00Z") });
+    expect(c[0].fixes[1]).toMatchObject({ lat: 19, lng: 158.9, forecast: true, time: Date.parse("2026-10-14T12:00:00Z") });
+  });
+
   it("builds typhoon tracks with forecast times from init + tau", () => {
     const c = parseCyclones({
       tropicalCyclones: {
