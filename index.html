@@ -42,10 +42,23 @@
         <button id="tilt" class="tool" aria-label="切換 3D 視角"><span aria-hidden="true">3D</span></button>
         <button id="north" class="tool" aria-label="指北"><span id="northArrow" aria-hidden="true">▲</span></button>
         <button id="filter" class="tool" aria-label="切換畫面濾鏡"><span aria-hidden="true">◐</span></button>
+        <button id="shareView" class="tool" aria-label="分享這個畫面的連結"><svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true"><path d="M12 15V3.5M7.5 8 12 3.5 16.5 8M5 12.5V19a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-6.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         <button id="layers" class="tool" aria-label="地圖類型與圖層（可換成 Google 地圖）"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3 2.5 8 12 13l9.5-5L12 3Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="m2.5 12.2 9.5 5 9.5-5M2.5 16.2l9.5 5 9.5-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg></button>
       </aside>
 
       <div id="readout" class="readout" aria-hidden="true"></div>
+      <section id="targetHud" class="target-hud hidden" aria-live="polite" aria-label="追蹤目標"></section>
+      <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+        <!-- Ironbow thermal palette: brightness mapped black → purple → red → orange → yellow → white. -->
+        <filter id="ironbow" color-interpolation-filters="sRGB">
+          <feColorMatrix type="matrix" values="0.3 0.59 0.11 0 0  0.3 0.59 0.11 0 0  0.3 0.59 0.11 0 0  0 0 0 1 0" />
+          <feComponentTransfer>
+            <feFuncR type="table" tableValues="0.02 0.3 0.62 0.86 0.98 1 1" />
+            <feFuncG type="table" tableValues="0.01 0.02 0.08 0.3 0.6 0.86 1" />
+            <feFuncB type="table" tableValues="0.1 0.45 0.55 0.25 0.06 0.25 0.92" />
+          </feComponentTransfer>
+        </filter>
+      </svg>
 
       <section id="strip" class="strip hidden" aria-live="polite"></section>
 

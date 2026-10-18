@@ -83,6 +83,7 @@ const results = await page.evaluate(async (keys) => {
   await probe("adsb.fi point", "https://opendata.adsb.fi/api/v2/lat/23.5/lon/121/dist/150", acCount);
   await probe("adsb.one point", "https://api.adsb.one/v2/point/23.5/121/150", acCount);
   await probe("OpenSky states", "https://opensky-network.org/api/states/all?lamin=21&lamax=26&lomin=118&lomax=124", (d) => `${(d.states ?? []).length} aircraft`);
+  await probe("Launch Library 2", "https://ll.thespacedevs.com/2.3.0/launches/upcoming/?limit=3&mode=normal", (d) => `${must(d.results, "results").length} launches; next ${d.results[0]?.name ?? "?"} at ${d.results[0]?.net ?? "?"}; pad ${d.results[0]?.pad?.latitude ?? "?"},${d.results[0]?.pad?.longitude ?? "?"}`);
   await probe("CelesTrak visual", "https://celestrak.org/NORAD/elements/gp.php?GROUP=visual&FORMAT=tle", (t) => `${String(t).split("\n").filter((l) => l.startsWith("1 ")).length} element sets`);
   await probe("Photon search", "https://photon.komoot.io/api/?q=%E8%B5%A4%E5%B4%81%E6%A8%93&limit=3&lat=23&lon=120.2", (d) => must(d.features, "features").map((f) => f.properties?.name).join(" / "));
   await probe("Photon reverse", "https://photon.komoot.io/reverse?lat=22.997&lon=120.2025&limit=1", (d) => d.features?.[0]?.properties?.name ?? "(no name)");
@@ -230,6 +231,17 @@ for (const [name, w, h, view, lenses, tdx] of [
   const p = await ctx.newPage();
   await p.goto(base);
   await p.waitForTimeout(12000);
+  if (name === "live-taiwan") {
+    // What a visitor sees about flights right now (the relay may serve its last good copy).
+    let status = "";
+    for (let i = 0; i < 8; i++) {
+      status = (await p.textContent("#strip .strip-status").catch(() => "")) ?? "";
+      if (/航班 \d+ 架|拒絕|限流/.test(status)) break;
+      await p.waitForTimeout(3000);
+    }
+    const flights = status.match(/航班[^·]*/)?.[0] ?? status;
+    results.push({ name: "App: Taiwan flights", direct: /航班 \d+ 架/.test(flights) ? "ok" : "check", relay: "-", note: flights.slice(0, 200) });
+  }
   if (appKeys) {
     // Wait for real counts; a rate-limited first try refreshes on its own a minute later.
     let status = "";

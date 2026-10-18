@@ -12,6 +12,11 @@ export interface RelayRule {
   ttl: number;
   /** Request carries the visitor's own key; never cached or shared. */
   keyed: boolean;
+  /**
+   * Seconds the last good answer may stand in when the upstream refuses or
+   * fails (shown as `x-relay-cache: STALE`). Never for keyed rules.
+   */
+  staleTtl?: number;
 }
 
 export const RELAY_RULES: RelayRule[] = [
@@ -22,6 +27,7 @@ export const RELAY_RULES: RelayRule[] = [
     method: "GET",
     ttl: 10,
     keyed: false,
+    staleTtl: 600,
   },
   {
     id: "airplanes-live",
@@ -30,6 +36,7 @@ export const RELAY_RULES: RelayRule[] = [
     method: "GET",
     ttl: 10,
     keyed: false,
+    staleTtl: 600,
   },
   {
     id: "adsb-fi",
@@ -38,6 +45,7 @@ export const RELAY_RULES: RelayRule[] = [
     method: "GET",
     ttl: 10,
     keyed: false,
+    staleTtl: 600,
   },
   {
     id: "adsb-one",
@@ -46,6 +54,7 @@ export const RELAY_RULES: RelayRule[] = [
     method: "GET",
     ttl: 10,
     keyed: false,
+    staleTtl: 600,
   },
   {
     id: "opensky",
@@ -54,6 +63,7 @@ export const RELAY_RULES: RelayRule[] = [
     method: "GET",
     ttl: 10,
     keyed: false,
+    staleTtl: 600,
   },
   {
     id: "celestrak",
@@ -63,6 +73,7 @@ export const RELAY_RULES: RelayRule[] = [
     // CelesTrak asks clients not to poll more than every couple of hours.
     ttl: 4 * 3600,
     keyed: false,
+    staleTtl: 3 * 86400,
   },
   {
     id: "usgs",
@@ -71,6 +82,17 @@ export const RELAY_RULES: RelayRule[] = [
     method: "GET",
     ttl: 120,
     keyed: false,
+    staleTtl: 3600,
+  },
+  {
+    // Upcoming launches; the free tier allows 15 calls an hour per IP.
+    id: "launches",
+    host: "ll.thespacedevs.com",
+    path: /^\/2\.3\.0\/launches\/upcoming\/$/,
+    method: "GET",
+    ttl: 3600,
+    keyed: false,
+    staleTtl: 86400,
   },
   {
     id: "tdx-token",

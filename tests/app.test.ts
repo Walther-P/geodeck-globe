@@ -37,6 +37,12 @@ describe("relay allowlist", () => {
 
   it("never shares keyed responses between visitors", () => {
     for (const r of RELAY_RULES) if (r.keyed) expect(r.ttl).toBe(0);
+    for (const r of RELAY_RULES) if (r.keyed) expect(r.staleTtl).toBeUndefined();
+  });
+
+  it("forwards the launch schedule", () => {
+    expect(matchRelayRule("https://ll.thespacedevs.com/2.3.0/launches/upcoming/?limit=12&mode=normal", "GET")?.rule.id).toBe("launches");
+    expect(matchRelayRule("https://ll.thespacedevs.com/2.3.0/launches/previous/", "GET")).toBeNull();
   });
 
   it("serves only this site's own pages", () => {

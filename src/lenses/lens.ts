@@ -21,6 +21,8 @@ export interface AppContext {
   openSettings(section?: string): void;
   /** Last known device position, if the user has located themselves. */
   me(): Point | null;
+  /** Share a link to exactly this view (camera, lenses, mode, target). */
+  shareView(): void;
 }
 
 export interface Chip {

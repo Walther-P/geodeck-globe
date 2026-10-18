@@ -12,6 +12,8 @@ interface SavedView {
   lng: number;
   lat: number;
   zoom: number;
+  bearing?: number;
+  pitch?: number;
 }
 
 const VIEW = "gdg.view.v1";
@@ -27,6 +29,8 @@ export function createGlobe(container: HTMLElement, onTilesFailed: () => void): 
     style: tacticalStyle(),
     center: reduced && saved ? [saved.lng, saved.lat] : SPACE.center,
     zoom: reduced && saved ? saved.zoom : SPACE.zoom,
+    bearing: reduced && saved ? (saved.bearing ?? 0) : 0,
+    pitch: reduced && saved ? (saved.pitch ?? 0) : 0,
     maxPitch: 70,
     attributionControl: false,
     localIdeographFontFamily: '"PingFang TC", "Noto Sans TC", "Microsoft JhengHei", "Heiti TC", sans-serif',
@@ -65,7 +69,7 @@ export function createGlobe(container: HTMLElement, onTilesFailed: () => void): 
     if (reduced) return;
     const to = saved ?? HOME;
     // Arrive from orbit: a slow spin-in to where the user last looked.
-    setTimeout(() => map.flyTo({ center: [to.lng, to.lat], zoom: to.zoom, duration: 3200, curve: 1.6, essential: true }), 350);
+    setTimeout(() => map.flyTo({ center: [to.lng, to.lat], zoom: to.zoom, bearing: to.bearing ?? 0, pitch: to.pitch ?? 0, duration: 3200, curve: 1.6, essential: true }), 350);
   });
   let saveTimer = 0;
   map.on("moveend", () => {
@@ -214,6 +218,30 @@ const ICONS: Record<string, { size: number; draw: Draw }> = {
       g.textAlign = "center";
       g.textBaseline = "middle";
       g.fillText("P", s / 2, s / 2 + 1);
+    },
+  },
+  rocket: {
+    size: 24,
+    draw: (g, s) => {
+      g.fillStyle = "#fda4af";
+      g.strokeStyle = "#1a0510";
+      g.lineWidth = 1.4;
+      g.beginPath();
+      g.moveTo(s / 2, 2);
+      g.quadraticCurveTo(s / 2 + 6, 7, s / 2 + 4, s - 8);
+      g.lineTo(s / 2 + 8, s - 3);
+      g.lineTo(s / 2 + 3, s - 5);
+      g.lineTo(s / 2 - 3, s - 5);
+      g.lineTo(s / 2 - 8, s - 3);
+      g.lineTo(s / 2 - 4, s - 8);
+      g.quadraticCurveTo(s / 2 - 6, 7, s / 2, 2);
+      g.closePath();
+      g.fill();
+      g.stroke();
+      g.fillStyle = "#1a0510";
+      g.beginPath();
+      g.arc(s / 2, 9, 2, 0, Math.PI * 2);
+      g.fill();
     },
   },
   "p-curb": {

@@ -26,6 +26,17 @@ async function relay(request: Request, ctx: ExecutionContext): Promise<Response>
 
   const cache = (caches as unknown as { default: Cache }).default;
   const cacheKey = new Request(url.toString(), { method: "GET" });
+  // A longer-lived copy of the last good answer, for when the upstream refuses us.
+  const staleKey = new Request(`https://stale.relay.invalid/?u=${encodeURIComponent(url.toString())}`, { method: "GET" });
+  const fromStale = async (): Promise<Response | null> => {
+    if (!rule.staleTtl || rule.keyed) return null;
+    const hit = await cache.match(staleKey);
+    if (!hit) return null;
+    const response = new Response(hit.body, hit);
+    response.headers.set("x-relay-cache", "STALE");
+    response.headers.set("cache-control", "no-store");
+    return response;
+  };
   if (rule.ttl > 0 && !rule.keyed) {
     const hit = await cache.match(cacheKey);
     if (hit) {
@@ -51,7 +62,7 @@ async function relay(request: Request, ctx: ExecutionContext): Promise<Response>
       redirect: "manual",
     });
   } catch {
-    return fail(504, "upstream timeout");
+    return (await fromStale()) ?? fail(504, "upstream timeout");
   }
   const length = Number(upstream.headers.get("content-length") || 0);
   if (length > MAX_RELAY_BYTES) return fail(502, "upstream response too large");
@@ -63,11 +74,22 @@ async function relay(request: Request, ctx: ExecutionContext): Promise<Response>
     const value = upstream.headers.get(name);
     if (value) out.set(name, value);
   }
+  if (upstream.status !== 200) {
+    const stale = await fromStale();
+    if (stale) return stale;
+  }
   const shareable = upstream.status === 200 && rule.ttl > 0 && !rule.keyed;
   out.set("cache-control", shareable ? `public, max-age=${rule.ttl}` : "no-store");
   out.set("x-relay-cache", "MISS");
   const response = new Response(body, { status: upstream.status, headers: out });
-  if (shareable) ctx.waitUntil(cache.put(cacheKey, response.clone()));
+  if (shareable) {
+    ctx.waitUntil(cache.put(cacheKey, response.clone()));
+    if (rule.staleTtl) {
+      const keep = new Headers(out);
+      keep.set("cache-control", `public, max-age=${rule.staleTtl}`);
+      ctx.waitUntil(cache.put(staleKey, new Response(body.slice(0), { status: 200, headers: keep })));
+    }
+  }
   return response;
 }
 

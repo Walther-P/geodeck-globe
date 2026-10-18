@@ -20,6 +20,9 @@
   （`VITE_GOOGLE_MAPS_KEY`，瀏覽器金鑰，必須限制網址）；使用者也可在設定填自己的（優先使用）
 - `worker/camera.ts` + `/api/cam`：只限 `*.gov.tw` 的 http 影像串流轉接（https 頁面不能載入 http 影像）
 - `src/ui/locate.ts`：定位藍點、精度圈、指南針扇形（iOS 要在點擊當下要求方向權限）
+- `src/ui/track.ts`：點選追蹤（鏡頭跟隨、軌跡、駕駛艙視角、目標面板）；`src/ui/detect.ts`：偵測框 HUD（canvas）
+- `src/data/passes.ts`：衛星過境與肉眼可見判斷（太陽位置、地球陰影）、行事曆檔；`src/data/launches.ts`：火箭發射
+- `src/ui/share.ts`：分享畫面連結（`?c=lat,lng&z=&b=&p=&l=&fx=&m=&t=`），開啟時在地圖啟動前套用
 
 ## 常用指令
 
@@ -52,6 +55,8 @@
    `tdxGet` 的優先佇列（停車 > 公車 > 影像清單），每分鐘最多 5 次並遵守 Retry-After；位置、名稱、
    影像清單用 `tdxStatic` 快取 6 小時（小的清單也存進 localStorage，最多 4 份）；停車只讀地圖中心的城市，
    公車每分鐘更新一次。新增 TDX 功能前先算每分鐘會多用幾次。
+11. **航班**：只有 adsb.lol 偶爾接受 Cloudflare；轉送有 `staleTtl`（來源拒絕時回最後一份好資料，標頭 `x-relay-cache: STALE`）。
+   App 用每架飛機的資料時間（`at`）推算位置，最多 `DEAD_RECKON_S` 秒，之後變淡並標示，不要假裝是即時位置。
 
 ## 部署
 

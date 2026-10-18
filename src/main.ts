@@ -11,6 +11,7 @@ import { read, write } from "./lib/store";
 import { escapeHtml as esc, formatCoord } from "./lib/util";
 import { Basemap } from "./map/basemap";
 import { addIcons, createGlobe } from "./map/globe";
+import { DetectOverlay } from "./ui/detect";
 import { $, Sheet, toast } from "./ui/dom";
 import { NowBar } from "./ui/now";
 import { openLayers } from "./ui/layers";
@@ -19,6 +20,21 @@ import { openSaved } from "./ui/saved";
 import { Locator } from "./ui/locate";
 import { setupSearch } from "./ui/search";
 import { openSettings } from "./ui/settings";
+import { readViewLink, shareLink, viewLink } from "./ui/share";
+
+const ACTIVE = "gdg.lenses.v1";
+
+// A shared view link (?c=…) restores camera, lenses, mode and map type
+// before the globe starts, so the fly-in lands on the shared view.
+const sharedView = readViewLink(location.search);
+if (sharedView) {
+  write("gdg.view.v1", { lng: sharedView.lng, lat: sharedView.lat, zoom: sharedView.zoom, bearing: sharedView.bearing, pitch: sharedView.pitch });
+  const lensList = sharedView.track && !sharedView.lenses.includes("sky") ? [...sharedView.lenses, "sky"] : sharedView.lenses;
+  if (lensList.length) write(ACTIVE, lensList);
+  write("gdg.fx.v1", sharedView.fx);
+  if (sharedView.map) write("gdg.basemap.v1", { base: sharedView.map, overlays: [] });
+  history.replaceState(null, "", location.pathname);
+}
 
 const sheet = new Sheet();
 const map = createGlobe($("map"), () => toast("地圖底圖連線失敗，暫時只顯示陸地輪廓；其他資訊仍可使用", 6000));
@@ -28,7 +44,6 @@ const basemap = new Basemap(map, toast);
 
 const taps: Array<{ layers: string[]; handler: (f: MapGeoJSONFeature) => void }> = [];
 const statuses = new Map<LensId, { text: string; tone?: Tone }>();
-const ACTIVE = "gdg.lenses.v1";
 let focused: LensId | null = null;
 
 const ctx: AppContext = {
@@ -55,15 +70,18 @@ const ctx: AppContext = {
   },
   openSettings: (section) => openSettings(sheet, toast, section, checkUpdate),
   me: () => locator.me,
+  shareView: () => shareView(),
 };
 
 const traffic = new TrafficLens(ctx);
+const sky = new SkyLens(ctx);
 const lenses: Record<LensId, Lens> = {
   weather: new WeatherLens(ctx),
   traffic,
   parking: new ParkingLens(ctx),
-  sky: new SkyLens(ctx),
+  sky,
 };
+if (sharedView?.track) sky.trackWhenSeen(sharedView.track.kind, sharedView.track.id);
 const active = new Set<LensId>();
 
 function setActive(id: LensId, on: boolean): void {
@@ -220,21 +238,70 @@ $("tilt").addEventListener("click", () => {
   else map.easeTo({ pitch: 60, zoom: Math.max(map.getZoom(), 15.5), duration: 1200 });
 });
 
-const FX = ["", "nvg", "flir", "crt"] as const;
-const FX_NAMES: Record<string, string> = { "": "標準", nvg: "夜視", flir: "熱感", crt: "CRT" };
+// ---- Screen modes & detection HUD ----------------------------------------------
+
+const FX_NAMES: Record<string, string> = { "": "標準", nvg: "夜視", flir: "熱感・白熱", ironbow: "熱感・鐵虹", crt: "CRT", noir: "黑白", snow: "雪地" };
 let fx = read<string>("gdg.fx.v1", "");
+if (!(fx in FX_NAMES)) fx = "";
+let detectOn = read<boolean>("gdg.detect.v1", false);
+const detect = new DetectOverlay(map, () => sky.objects(), () => sky.trackedKey());
 const applyFx = () => {
   if (fx) document.body.dataset.fx = fx;
   else delete document.body.dataset.fx;
-  $("filter").setAttribute("aria-pressed", String(!!fx));
+  $("filter").setAttribute("aria-pressed", String(!!fx || detectOn));
+  detect.set(detectOn);
 };
 applyFx();
-$("filter").addEventListener("click", () => {
-  fx = FX[(FX.indexOf(fx as (typeof FX)[number]) + 1) % FX.length];
-  write("gdg.fx.v1", fx);
-  applyFx();
-  toast(`畫面：${FX_NAMES[fx]}`, 1500);
-});
+
+function openScreenModes(): void {
+  const body = sheet.open(
+    "screen",
+    "SENSOR",
+    "畫面模式",
+    `<div class="basemaps">${Object.entries(FX_NAMES)
+      .map(([id, label]) => `<button class="basemap" data-mode="${id}" aria-pressed="${fx === id}"><span class="swatch fx-sw fx-sw-${id || "std"}" aria-hidden="true"></span>${label}</button>`)
+      .join("")}</div>
+    <h2>偵測框 HUD</h2>
+    <div class="basemaps"><button class="basemap" id="detectToggle" aria-pressed="${detectOn}"><span class="swatch fx-sw fx-sw-detect" aria-hidden="true"></span>${detectOn ? "開啟中" : "關閉"}<small>框出畫面裡的飛機與衛星</small></button></div>
+    <p class="micro">偵測框標示「天空」視角裡的航班與衛星，點任何一個都能鎖定追蹤。</p>`,
+  );
+  body.querySelectorAll<HTMLElement>("[data-mode]").forEach((b) =>
+    b.addEventListener("click", () => {
+      fx = b.dataset.mode ?? "";
+      write("gdg.fx.v1", fx);
+      applyFx();
+      openScreenModes();
+    }),
+  );
+  body.querySelector("#detectToggle")!.addEventListener("click", () => {
+    detectOn = !detectOn;
+    write("gdg.detect.v1", detectOn);
+    if (detectOn && !active.has("sky")) {
+      setActive("sky", true);
+      focusLens("sky");
+    }
+    applyFx();
+    openScreenModes();
+  });
+}
+$("filter").addEventListener("click", openScreenModes);
+
+function shareView(): void {
+  const c = map.getCenter();
+  const url = viewLink(`${location.origin}${location.pathname}`, {
+    lat: c.lat,
+    lng: c.lng,
+    zoom: map.getZoom(),
+    bearing: map.getBearing(),
+    pitch: map.getPitch(),
+    lenses: [...active],
+    fx,
+    map: basemap.effective().base,
+    track: sky.trackedRef(),
+  });
+  void shareLink(url, "百眼", toast);
+}
+$("shareView").addEventListener("click", shareView);
 
 const locator = new Locator(
   map,

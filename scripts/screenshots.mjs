@@ -83,6 +83,7 @@ const fixtures = {
     ],
   }),
   "api.adsb.lol": () => ({
+    now: Date.now(),
     ac: [
       ["8964a1", "CAL7", "B-18901", "A359", 25.08, 121.23, 4200, 180, 230],
       ["899012", "EVA16", "B-16717", "B77W", 24.8, 121.6, 33000, 470, 45],
@@ -134,6 +135,12 @@ const fixtures = {
     return GOOGLE_TILE;
   },
   "maps.gstatic.com": () => GOOGLE_LOGO,
+  "ll.thespacedevs.com": () => ({
+    results: [
+      { id: "l1", name: "Falcon 9 Block 5 | Starlink Group 12-3", net: new Date(now + 26 * 3600000).toISOString(), status: { abbrev: "Go", name: "Go for Launch" }, launch_service_provider: { name: "SpaceX" }, pad: { name: "SLC-40", latitude: "28.5618", longitude: "-80.577", location: { name: "Cape Canaveral, FL, USA" } } },
+      { id: "l2", name: "Long March 2F | Shenzhou 23", net: new Date(now + 3 * 86400000).toISOString(), status: { abbrev: "TBC", name: "To Be Confirmed" }, launch_service_provider: { name: "CASC" }, pad: { name: "LC-43/91", latitude: "40.958", longitude: "100.291", location: { name: "Jiuquan, China" } } },
+    ],
+  }),
   "photon.komoot.io": () => ({ features: [{ geometry: { coordinates: [120.2049, 22.9908] }, properties: { name: "赤崁樓", city: "臺南市", district: "中西區", country: "臺灣", countrycode: "TW" } }] }),
 };
 
@@ -156,11 +163,19 @@ const shots = [
   { name: "phone-settings", w: 393, h: 852, view: { lng: 121, lat: 23.6, zoom: 6 }, lenses: [], settings: true },
   { name: "phone-google-map", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15.4 }, lenses: ["parking"], google: true, layers: true },
   { name: "phone-google-parking", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15.4 }, lenses: ["parking"], google: true, healthy: true },
-  { name: "phone-landscape", w: 852, h: 393, view: { lng: 121, lat: 23.8, zoom: 6.4 }, lenses: ["sky"], fx: "nvg" },
+  { name: "phone-landscape", w: 852, h: 393, view: { lng: 121, lat: 23.8, zoom: 6.4 }, lenses: ["sky"], fx: "ironbow", detect: true },
+  // A shared view link that locks onto CAL7 with detection boxes on.
+  { name: "phone-track", w: 393, h: 852, view: { lng: 121, lat: 23.8, zoom: 7 }, lenses: [], detect: true, query: "?c=24.9,121.2&z=8&l=sky&t=plane:8964a1", track: "CAL7" },
+  { name: "phone-cockpit", w: 393, h: 852, view: { lng: 121, lat: 23.8, zoom: 7 }, lenses: [], query: "?c=24.9,121.2&z=8&l=sky&t=plane:8964a1", track: "CAL7", cockpit: true },
+  { name: "phone-passes", w: 393, h: 852, view: { lng: 121.5, lat: 25.03, zoom: 7 }, lenses: ["sky"], passes: true },
+  { name: "phone-google-landscape", w: 852, h: 393, view: { lng: 121.5, lat: 25.03, zoom: 9 }, lenses: ["sky"], google: true, query: "?c=24.9,121.2&z=8&l=sky&t=plane:8964a1", track: "CAL7" },
 ];
 
 const errors = [];
+// SHOTS=phone-track,phone-cockpit runs just those.
+const only = process.env.SHOTS?.split(",");
 for (const s of shots) {
+  if (only && !only.includes(s.name)) continue;
   const ctx = await browser.newContext({
     viewport: { width: s.w, height: s.h },
     deviceScaleFactor: 2,
@@ -170,7 +185,8 @@ for (const s of shots) {
     geolocation: { latitude: 22.9925, longitude: 120.2048, accuracy: 25 },
     permissions: ["geolocation", "accelerometer", "gyroscope", "magnetometer"],
   });
-  await ctx.addInitScript(({ view, lenses, fx, tdx, google }) => {
+  await ctx.addInitScript(({ view, lenses, fx, tdx, google, detect }) => {
+    if (detect) localStorage.setItem("gdg.detect.v1", "true");
     if (tdx || google) localStorage.setItem("gdg.keys.v1", JSON.stringify({ tdxId: tdx ? "demo" : "", tdxSecret: tdx ? "demo" : "", cwa: "", google: google ? "demo-key" : "" }));
     if (google) localStorage.setItem("gdg.basemap.v1", JSON.stringify({ base: "g-road", overlays: ["traffic"] }));
     localStorage.setItem("gdg.view.v1", JSON.stringify(view));
@@ -190,12 +206,27 @@ for (const s of shots) {
   const page = await ctx.newPage();
   page.on("pageerror", (e) => errors.push(`${s.name}: ${e.message}`));
   page.on("console", (m) => m.type() === "error" && !/Failed to load resource|net::ERR|AJAXError|tiles\.openfreemap|rainviewer/.test(m.text()) && errors.push(`${s.name}: console ${m.text()}`));
-  await page.goto(base);
+  await page.goto(base + (s.query ?? ""));
   await page.waitForTimeout(4500);
   if (s.tap) await page.click("#now");
   if (s.click) await page.mouse.click(s.w / 2, s.h / 2 - 60);
   if (s.settings) await page.click("#openSettings");
   if (s.layers) await page.click("#layers");
+  if (s.track) {
+    // The target appears once the first flight update lands.
+    await page.waitForFunction(() => document.body.dataset.tracking === "plane", null, { timeout: 15000 }).catch(() => {});
+    if (s.cockpit) {
+      await page.click('[data-th="cockpit"]').catch(() => {});
+      for (let i = 0; i < (process.env.DEBUG_COCKPIT ? 8 : 1); i++) {
+        await page.waitForTimeout(process.env.DEBUG_COCKPIT ? 400 : 1800);
+        if (process.env.DEBUG_COCKPIT) console.log(await page.evaluate(() => document.getElementById("northArrow")?.style.transform));
+      }
+    }
+  }
+  if (s.passes) {
+    await page.click("#skyPasses");
+    await page.waitForFunction(() => !document.querySelector("#sheetBody")?.textContent?.includes("計算中"), null, { timeout: 20000 }).catch(() => {});
+  }
   if (s.locate) {
     await page.click("#locate");
     await page.waitForTimeout(1200);
@@ -226,6 +257,16 @@ for (const s of shots) {
       }));
       errors.push(`${s.name}: location marker has no heading (${heading}) ${JSON.stringify(info)}`);
     }
+  }
+  if (s.track) {
+    const hud = (await page.textContent("#targetHud").catch(() => "")) ?? "";
+    const tracking = await page.evaluate(() => document.body.dataset.tracking ?? "");
+    if (tracking !== "plane" || !hud.includes(s.track)) errors.push(`${s.name}: not tracking ${s.track} (tracking="${tracking}", hud="${hud.slice(0, 80)}")`);
+  }
+  if (s.passes) {
+    const title = (await page.textContent("#sheetTitle").catch(() => "")) ?? "";
+    const text = (await page.textContent("#sheetBody").catch(() => "")) ?? "";
+    if (title !== "衛星過境預報" || /無法|計算中/.test(text) || !/國際太空站|沒有高於/.test(text)) errors.push(`${s.name}: passes sheet "${title}" ${text.slice(0, 120)}`);
   }
   if (s.google) {
     const state = await page.evaluate(() => ({ basemap: document.body.dataset.basemap, copyright: document.querySelector(".gbrand .gcopy")?.textContent, toast: document.getElementById("toast")?.textContent }));

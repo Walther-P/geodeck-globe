@@ -129,6 +129,8 @@ export interface Aircraft {
   track: number | null;
   /** Seconds since the position was received. */
   seen: number | null;
+  /** When the position was received (ms), if the feed said. */
+  at: number | null;
 }
 
 interface AdsbRow {
@@ -146,8 +148,10 @@ interface AdsbRow {
 }
 
 /** readsb "v2" JSON, used by adsb.lol, airplanes.live and adsb.fi. */
-export function parseAdsb(d: { ac?: AdsbRow[]; aircraft?: AdsbRow[] }): Aircraft[] {
+export function parseAdsb(d: { ac?: AdsbRow[]; aircraft?: AdsbRow[]; now?: number }): Aircraft[] {
   const out: Aircraft[] = [];
+  // `now` is the feed's clock: milliseconds, or seconds in older readsb builds.
+  const now = finite(d.now) ? (d.now < 1e12 ? d.now * 1000 : d.now) : null;
   for (const a of d.ac ?? d.aircraft ?? []) {
     const pos = point(a.lat, a.lon);
     if (!pos || !a.hex) continue;
@@ -162,6 +166,7 @@ export function parseAdsb(d: { ac?: AdsbRow[]; aircraft?: AdsbRow[] }): Aircraft
       speedKt: num(a.gs),
       track: num(a.track) ?? num(a.true_heading),
       seen: num(a.seen_pos),
+      at: now === null ? null : now - (num(a.seen_pos) ?? 0) * 1000,
     });
   }
   return out;
@@ -188,6 +193,7 @@ export function parseOpenSky(d: { time?: number; states?: unknown[][] | null }):
       speedKt: speed === null ? null : speed * 1.943844,
       track: num(s[10]),
       seen: at !== null && finite(d.time) ? Math.max(0, d.time - at) : null,
+      at: at === null ? null : at * 1000,
     });
   }
   return out;
@@ -240,6 +246,22 @@ export const FLIGHT_SOURCES: FlightSource[] = [
     parse: (d) => parseOpenSky(d as Parameters<typeof parseOpenSky>[0]),
   },
 ];
+
+/** Longest a position is carried forward along its track before it is shown as stale. */
+export const DEAD_RECKON_S = 120;
+
+/**
+ * Where an aircraft is now, carried along its track from when its position
+ * was received (`fallbackAt` when the feed gave no time).
+ */
+export function extrapolate(a: Aircraft, now: number, fallbackAt: number): { lat: number; lng: number; stale: boolean } {
+  const dt = (now - (a.at ?? fallbackAt)) / 1000;
+  if (a.onGround || a.speedKt === null || a.track === null || dt <= 0) return { lat: a.lat, lng: a.lng, stale: dt > DEAD_RECKON_S };
+  const t = Math.min(dt, DEAD_RECKON_S);
+  const d = (a.speedKt * 0.514444 * t) / 111320;
+  const rad = (a.track * Math.PI) / 180;
+  return { lat: a.lat + d * Math.cos(rad), lng: a.lng + (d * Math.sin(rad)) / Math.cos((a.lat * Math.PI) / 180), stale: dt > DEAD_RECKON_S };
+}
 
 /** Snap the query so nearby visitors share relay cache entries. */
 export function flightQuery(p: Point, radiusNm: number): { lat: number; lng: number; nm: number } {
@@ -315,6 +337,20 @@ export function satPosition(s: Satellite, when: Date): SatPosition | null {
   if (lng > 180) lng -= 360;
   if (!finite(lat) || !finite(lng) || !finite(g.height)) return null;
   return { id: s.id, name: s.name, lat, lng, altKm: g.height };
+}
+
+/** Position plus ground heading and orbital speed, for tracking. */
+export function satMotion(s: Satellite, when: Date): (SatPosition & { heading: number; speedKmS: number }) | null {
+  const p = satPosition(s, when);
+  const q = satPosition(s, new Date(when.getTime() + 1000));
+  const pv = propagate(s.satrec, when);
+  if (!p || !q || !pv || typeof pv.velocity !== "object") return null;
+  const y = Math.sin(((q.lng - p.lng) * Math.PI) / 180) * Math.cos((q.lat * Math.PI) / 180);
+  const x =
+    Math.cos((p.lat * Math.PI) / 180) * Math.sin((q.lat * Math.PI) / 180) -
+    Math.sin((p.lat * Math.PI) / 180) * Math.cos((q.lat * Math.PI) / 180) * Math.cos(((q.lng - p.lng) * Math.PI) / 180);
+  const v = pv.velocity;
+  return { ...p, heading: ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360, speedKmS: Math.hypot(v.x, v.y, v.z) };
 }
 
 /** Ground track sampled every `stepMin` minutes, split at the antimeridian. */
