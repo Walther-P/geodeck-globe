@@ -17,7 +17,9 @@ mkdirSync(out, { recursive: true });
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined, args: ["--use-gl=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] });
 const page = await browser.newPage();
-await page.goto(base, { waitUntil: "domcontentloaded" });
+// A same-origin document without the app's scripts, so nothing navigates
+// away mid-probe and fetches carry this site's origin like the app's do.
+await page.goto(new URL("icon.svg", base).toString());
 
 const keys = { tdxId: process.env.PROBE_TDX_ID ?? "", tdxSecret: process.env.PROBE_TDX_SECRET ?? "", cwa: process.env.PROBE_CWA_KEY ?? "" };
 const results = await page.evaluate(async (keys) => {

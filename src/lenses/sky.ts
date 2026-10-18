@@ -20,7 +20,7 @@ import { distance, escapeHtml as esc, formatCoord, safeUrl } from "../lib/util";
 import { EMPTY, addLayers, hideLayers, points, setData } from "../map/globe";
 import { every, type AppContext, type Chip, type Lens } from "./lens";
 
-const LAYERS = ["sky-quake-glow", "sky-quake", "sky-quake-label", "sky-track", "sky-sat", "sky-sat-label", "sky-plane", "sky-plane-label"];
+const LAYERS = ["sky-quake-glow", "sky-quake", "sky-quake-label", "sky-track", "sky-starlink", "sky-sat", "sky-sat-label", "sky-plane", "sky-plane-label"];
 
 export class SkyLens implements Lens {
   id = "sky" as const;
@@ -43,7 +43,7 @@ export class SkyLens implements Lens {
 
   constructor(private ctx: AppContext) {
     ctx.onFeatureTap(["sky-plane"], (f) => this.showPlane(f));
-    ctx.onFeatureTap(["sky-sat"], (f) => this.showSat(f));
+    ctx.onFeatureTap(["sky-sat", "sky-starlink"], (f) => this.showSat(f));
     ctx.onFeatureTap(["sky-quake"], (f) => this.showQuake(f));
   }
 
@@ -69,7 +69,7 @@ export class SkyLens implements Lens {
   activate(): void {
     this.active = true;
     const map = this.ctx.map;
-    for (const id of ["sky-planes", "sky-sats", "sky-track", "sky-quakes"]) setData(map, id, EMPTY);
+    for (const id of ["sky-planes", "sky-sats", "sky-starlink", "sky-track", "sky-quakes"]) setData(map, id, EMPTY);
     addLayers(map, [
       {
         id: "sky-quake-glow",
@@ -110,16 +110,21 @@ export class SkyLens implements Lens {
         paint: { "line-color": "#5eead4", "line-width": 1.2, "line-opacity": 0.55, "line-dasharray": [2, 3] },
       },
       {
+        id: "sky-starlink",
+        type: "circle",
+        source: "sky-starlink",
+        paint: { "circle-radius": 1.6, "circle-color": "#a5f3fc", "circle-opacity": 0.6 },
+      },
+      {
         id: "sky-sat",
         type: "symbol",
         source: "sky-sats",
         layout: {
           "icon-image": "sat",
-          "icon-size": ["case", ["get", "station"], 1, ["get", "starlink"], 0.32, 0.6],
+          "icon-size": ["case", ["get", "station"], 1, 0.6],
           "icon-allow-overlap": true,
           "icon-ignore-placement": true,
         },
-        paint: { "icon-opacity": ["case", ["get", "starlink"], 0.55, 0.95] },
       },
       {
         id: "sky-sat-label",
@@ -242,8 +247,9 @@ export class SkyLens implements Lens {
 
   private async loadSats(): Promise<void> {
     if (!this.active) return;
+    if (!this.on.sats) setData(this.ctx.map, "sky-sats", EMPTY);
+    if (!this.on.starlink) setData(this.ctx.map, "sky-starlink", EMPTY);
     if (!this.on.sats && !this.on.starlink) {
-      setData(this.ctx.map, "sky-sats", EMPTY);
       setData(this.ctx.map, "sky-track", EMPTY);
       this.notes.sats = "";
       return;
@@ -265,31 +271,38 @@ export class SkyLens implements Lens {
   }
 
   private tickCount = 0;
-  private starlinkRows: Array<{ id: string; name: string; lat: number; lng: number; station: boolean; starlink: boolean }> = [];
 
   private tick(force = false): void {
     if (!this.active) return;
     if (this.on.planes && this.planes.length) this.drawPlanes();
     this.tickCount++;
-    // Thousands of Starlinks move every 4 s to spare phone batteries.
-    const starlinkDue = force || this.tickCount % 4 === 0;
-    if (!this.on.sats && !(this.on.starlink && starlinkDue)) return;
     const now = new Date();
-    const rows: typeof this.starlinkRows = [];
+    const at = (s: Satellite) => satPosition(s, now);
     if (this.on.sats)
-      for (const s of this.sats) {
-        const p = satPosition(s, now);
-        if (p) rows.push({ ...p, station: !!(s as Satellite & { station?: boolean }).station, starlink: false });
-      }
-    if (this.on.starlink) {
-      if (starlinkDue)
-        this.starlinkRows = this.starlink.flatMap((s) => {
-          const p = satPosition(s, now);
-          return p ? [{ ...p, station: false, starlink: true }] : [];
-        });
-      rows.push(...this.starlinkRows);
-    }
-    setData(this.ctx.map, "sky-sats", points(rows, (r) => ({ id: r.id, name: r.name, station: r.station, starlink: r.starlink })));
+      setData(
+        this.ctx.map,
+        "sky-sats",
+        points(
+          this.sats.flatMap((s) => {
+            const p = at(s);
+            return p ? [{ ...p, station: !!(s as Satellite & { station?: boolean }).station }] : [];
+          }),
+          (r) => ({ id: r.id, name: r.name, station: r.station }),
+        ),
+      );
+    // Thousands of Starlinks move every 4 s, as plain dots, to spare batteries.
+    if (this.on.starlink && (force || this.tickCount % 4 === 0))
+      setData(
+        this.ctx.map,
+        "sky-starlink",
+        points(
+          this.starlink.flatMap((s) => {
+            const p = at(s);
+            return p ? [p] : [];
+          }),
+          (r) => ({ id: r.id }),
+        ),
+      );
     if (this.tracked && (force || this.tickCount % 30 === 1)) {
       const parts = groundTrack(this.tracked, now);
       setData(this.ctx.map, "sky-track", {

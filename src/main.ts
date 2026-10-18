@@ -274,6 +274,7 @@ addEventListener("online", () => toast("已恢復連線", 1500));
 // ---- PWA ---------------------------------------------------------------------
 
 let waiting: ServiceWorker | null = null;
+let updating = false;
 function checkUpdate(): void {
   if (!("serviceWorker" in navigator)) return toast("這個瀏覽器不支援離線更新");
   navigator.serviceWorker.getRegistration().then((r) => {
@@ -285,29 +286,31 @@ function checkUpdate(): void {
   });
 }
 if ("serviceWorker" in navigator && import.meta.env.PROD) {
-  void navigator.serviceWorker
+  navigator.serviceWorker
     .register("./sw.js")
     .then((reg) => {
-    if (!reg) return;
-    const offer = (w: ServiceWorker | null) => {
-      if (!w) return;
-      waiting = w;
-      $("update").classList.remove("hidden");
-    };
-    offer(reg.waiting);
-    reg.addEventListener("updatefound", () => {
-      const w = reg.installing;
-      w?.addEventListener("statechange", () => w.state === "installed" && navigator.serviceWorker.controller && offer(w));
-    });
+      if (!reg) return;
+      const offer = (w: ServiceWorker | null) => {
+        if (!w) return;
+        waiting = w;
+        $("update").classList.remove("hidden");
+      };
+      offer(reg.waiting);
+      reg.addEventListener("updatefound", () => {
+        const w = reg.installing;
+        w?.addEventListener("statechange", () => w.state === "installed" && navigator.serviceWorker.controller && offer(w));
+      });
     })
     .catch(() => {
       /* private mode or blocked: the app works without offline support */
     });
-  let reloading = false;
+  // The first install also changes controller (clients.claim); only reload
+  // when the user asked for the new version.
   navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (reloading) return;
-    reloading = true;
-    location.reload();
+    if (updating) location.reload();
   });
 }
-$("applyUpdate").addEventListener("click", () => waiting?.postMessage("skipWaiting"));
+$("applyUpdate").addEventListener("click", () => {
+  updating = true;
+  waiting?.postMessage("skipWaiting");
+});
