@@ -158,7 +158,9 @@ export function parseAdsb(d: { ac?: AdsbRow[] }): Aircraft[] {
 export async function aircraftNear(p: Point, radiusNm: number, signal?: AbortSignal): Promise<Aircraft[]> {
   const r = Math.max(5, Math.min(250, Math.round(radiusNm)));
   const url = `https://api.adsb.lol/v2/point/${p.lat.toFixed(3)}/${p.lng.toFixed(3)}/${r}`;
-  return parseAdsb(await getJson(url, { signal, route: "direct-then-relay", timeout: 12000 }));
+  // adsb.lol sends no CORS headers (checked by scripts/live-probe.mjs), so
+  // browsers always go through our relay, which also caches for 8 s.
+  return parseAdsb(await getJson(url, { signal, route: "relay", timeout: 12000 }));
 }
 
 // ---- Satellites (CelesTrak GP + SGP4) -------------------------------------
