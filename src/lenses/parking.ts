@@ -165,6 +165,8 @@ export class ParkingLens implements Lens {
         }
         try {
           const lots = await (f.kind === "lot" ? liveLots : liveCurbs)(f.code);
+          // No segment with counts: don't spend a call on this city every minute.
+          if (f.kind === "curb" && !lots.length) this.noCurbFeed.add(f.code);
           this.live.set(f.key, { at: Date.now(), lots });
           out.push(...lots);
         } catch (e) {
