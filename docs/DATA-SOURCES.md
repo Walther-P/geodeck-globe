@@ -10,7 +10,7 @@
 | 衛星雲圖 | [NASA GIBS](https://www.earthdata.nasa.gov/gibs)：Himawari／GOES 紅外線、MODIS | 直連 | NASA 開放資料 | 10 分鐘至每日 |
 | 全球地震 | [USGS](https://earthquake.usgs.gov/earthquakes/feed/) 24 小時 M2.5+ | 直連，失敗改轉送 | 公有領域 | 每分鐘 |
 | 地震報告、颱風路徑、天氣特報 | [中央氣象署開放資料](https://opendata.cwa.gov.tw) E-A0015-001、E-A0016-001、W-C0034-005、W-C0033-001 | 使用者自己的授權碼，直連，失敗改轉送（不快取） | 政府資料開放授權條款第 1 版 | 即時 |
-| 航班 | [adsb.lol](https://adsb.lol)（社群 ADS-B 接收站） | 一律轉送（不允許瀏覽器直連），快取 8 秒 | ODbL | 即時 |
+| 航班 | 社群 ADS-B：airplanes.live、adsb.fi、adsb.one、OpenSky、adsb.lol（依序嘗試） | 都不允許瀏覽器直連，只能轉送；**目前都拒絕 Cloudflare 的伺服器**（見下方實測） | 各網站條款 | 即時 |
 | 衛星軌道 | [CelesTrak](https://celestrak.org) GP 資料，SGP4 推算 | 轉送（快取 4 小時）；建置時另存快照 | CelesTrak 使用條款 | 每日 |
 | 停車目錄 | OpenStreetMap ＋ 臺北、新北、桃園、臺中、臺南開放資料（GeoDeck 0.7 整理，2026-09-27） | 打包在 `public/data/parking/` | ODbL（含 OSM）＋政府資料開放授權條款；見 `public/data/parking/LICENSE.md` | 手動重建 |
 | 即時車位、公車動態、道路影像（TDX） | [TDX 運輸資料流通服務](https://tdx.transportdata.tw) | 使用者自己的金鑰，直連，失敗改轉送（不快取） | 政府資料開放授權條款第 1 版 | 即時 |
@@ -41,12 +41,23 @@ GeoDeck 0.7 的目錄有 11,514 支鏡頭，其中 4,302 支的影像網址是�
 | --- | --- | --- | --- |
 | Open-Meteo 天氣／空氣 | 可 | 不需要 | 15 分鐘降雨 12 筆 |
 | RainViewer 索引與圖磚 | 可 | 不需要 | 13 張雷達畫面 |
-| NASA GIBS 向日葵雲圖 | 可 | 不需要 | DescribeDomains 取得最新時間，Level6 圖磚正常 |
+| NASA GIBS 向日葵雲圖 | 可 | 不需要 | DescribeDomains 標示的最新時間常常還沒有圖磚（404），往前 30 分鐘就有，App 用這個時間 |
 | USGS 地震 | 可 | 可 | — |
-| adsb.lol 航班 | **不可（CORS）** | 可 | 所以航班一律走轉送 |
+| adsb.lol 航班 | **不可（CORS）** | GitHub 機房可；Cloudflare 回 429 | |
+| airplanes.live 航班 | 不可（CORS） | GitHub 機房 403；Cloudflare 403 | |
+| adsb.fi 航班 | 不可（CORS） | GitHub 機房可；Cloudflare 403 | |
+| adsb.one 航班 | 不可（CORS） | Cloudflare 403 | |
+| OpenSky 航班 | 不可（CORS） | Cloudflare 522（連線被拒） | |
 | CelesTrak | 可 | 可 | 走轉送以便快取 4 小時，減輕 CelesTrak 負擔 |
 | Photon 搜尋／反查 | 可 | 不需要 | 「赤崁樓」可找到 |
 | OpenFreeMap TileJSON／字型 | 可 | 不需要 | 圖磚有 `name:zh-Hant` |
 | TDX、氣象署 | 待測 | 待測 | 需要在 repository secrets 設定 `PROBE_TDX_ID`、`PROBE_TDX_SECRET`、`PROBE_CWA_KEY` 才會實測 |
 
 公路局、高公局影像用 `<img>` 顯示，不需要 CORS；它們的伺服器可能擋國外 IP，所以 CI 的直連結果不代表台灣使用者的情況。
+
+### 航班的結論（2026-10-18）
+
+五個免費 ADS-B 來源都不允許瀏覽器直接讀，而且都拒絕 Cloudflare Workers 的共用出口 IP；從其他機房
+（GitHub Actions）則有兩個可用。要在正式網站顯示航班，需要一個不在 Cloudflare 上的轉送點
+（例如 Supabase Edge Function），或等來源開放。App 目前會顯示「資料來源目前拒絕本站連線」，並每 3 分鐘
+重試一次，不會一直打對方的伺服器。

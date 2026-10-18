@@ -30,6 +30,8 @@ export class SkyLens implements Lens {
   private planes: Aircraft[] = [];
   private planesAt = 0;
   private planeSource = "";
+  /** After every network refuses us, wait before asking again. */
+  private planesRetryAt = 0;
   private sats: Satellite[] = [];
   private starlink: Satellite[] = [];
   private tracked: Satellite | null = null;
@@ -192,6 +194,7 @@ export class SkyLens implements Lens {
       this.report();
       return;
     }
+    if (Date.now() < this.planesRetryAt) return;
     const c = map.getCenter();
     const b = map.getBounds();
     const center = { lat: c.lat, lng: c.lng };
@@ -202,10 +205,12 @@ export class SkyLens implements Lens {
       this.planes = aircraft;
       this.planeSource = source;
       this.planesAt = Date.now();
+      this.planesRetryAt = 0;
       this.notes.planes = `航班 ${this.planes.length} 架（${source}，ADS-B 社群接收，非完整）`;
       this.drawPlanes();
-    } catch (e) {
-      this.notes.planes = `航班暫時無法取得：${(e as Error).message}`;
+    } catch {
+      this.planesRetryAt = Date.now() + 3 * 60000;
+      this.notes.planes = "航班：資料來源目前拒絕本站連線，3 分鐘後再試（衛星、地震不受影響）";
     }
     this.report();
   }
