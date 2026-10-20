@@ -1,0 +1,16 @@
+# Temporary: probes candidate camera and parking sources from a network that can reach them.
+name: Scout sources
+on:
+  push:
+    branches: [claude/camera-scout]
+permissions:
+  contents: read
+jobs:
+  scout:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/scout.mjs
