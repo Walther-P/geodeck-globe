@@ -86,13 +86,6 @@ export function parseNewZealand(d: { response?: { camera?: NzRow[] } }): Camera[
   );
 }
 
-const QLD = { id: "qld", name: "昆士蘭交通廳 QLDTraffic" };
-export function parseQueensland(d: { features?: Array<{ geometry?: { coordinates?: number[] }; properties?: { id?: number; description?: string; image_url?: string } }> }): Camera[] {
-  return compact(
-    (d?.features ?? []).map((f) => cam(QLD, f.properties?.id ?? "", f.properties?.description ?? "", f.geometry?.coordinates?.[1], f.geometry?.coordinates?.[0], { image: f.properties?.image_url ?? null })),
-  );
-}
-
 const NSW = { id: "nsw", name: "新南威爾斯交通局 Live Traffic NSW" };
 export function parseNsw(d: Array<{ id?: string; eventCategory?: string; geometry?: { coordinates?: number[] }; properties?: { title?: string; view?: string; href?: string } }>): Camera[] {
   return compact(
@@ -320,7 +313,7 @@ export function windyNear(lat: number, lng: number): { cell: string; data: Promi
 
 // ---- Sources -----------------------------------------------------------------
 
-const json = <T>(url: string, route: Route = "direct") => getJson<T>(url, { route, timeout: 20000 });
+const json = <T>(url: string, route: Route = "direct", headers?: Record<string, string>) => getJson<T>(url, { route, timeout: 20000, headers });
 
 let sgCache: { at: number; data: Promise<Camera[]> } | null = null;
 function singapore(): Promise<Camera[]> {
@@ -357,15 +350,7 @@ export const CAM_SOURCES: CamSource[] = [
     load: async () => parseHongKong(await getText("https://static.data.gov.hk/td/traffic-snapshot-images/code/Traffic_Camera_Locations_Tc.xml", { timeout: 20000 })),
   },
   { ...SG, place: "新加坡", bbox: box(1.15, 103.6, 1.48, 104.1), minZoom: 8, load: singapore },
-  { ...NZ, place: "紐西蘭", bbox: box(-47.5, 166, -34, 179), minZoom: 5, load: async () => parseNewZealand(await json("https://trafficnz.info/service/traffic/rest/4/cameras/all", "relay")) },
-  {
-    ...QLD,
-    place: "昆士蘭",
-    bbox: box(-29.2, 137.9, -10, 153.6),
-    minZoom: 5,
-    // QLDTraffic publishes this key in its own documentation for public use.
-    load: async () => parseQueensland(await json("https://api.qldtraffic.qld.gov.au/v1/webcams?apikey=3e83add325cbb69ac4d8e5bf433d770b", "relay")),
-  },
+  { ...NZ, place: "紐西蘭", bbox: box(-47.5, 166, -34, 179), minZoom: 5, load: async () => parseNewZealand(await json("https://trafficnz.info/service/traffic/rest/4/cameras/all", "relay", { accept: "application/json" })) },
   { ...NSW, place: "新南威爾斯", bbox: box(-37.6, 140.9, -28.1, 153.7), minZoom: 5, load: async () => parseNsw(await json("https://www.livetraffic.com/datajson/all-feeds-web.json", "relay")) },
   { ...FI, place: "芬蘭", bbox: box(59.5, 19.5, 70.1, 31.6), minZoom: 5, load: async () => parseFinland(await json("https://tie.digitraffic.fi/api/weathercam/v1/stations")) },
   { ...TFL, place: "倫敦", bbox: box(51.25, -0.6, 51.75, 0.35), minZoom: 8, load: async () => parseTfl(await json("https://api.tfl.gov.uk/Place/Type/JamCam")) },
@@ -374,7 +359,7 @@ export const CAM_SOURCES: CamSource[] = [
     place: "西班牙",
     bbox: box(27.6, -18.2, 43.9, 4.4),
     minZoom: 6,
-    load: async () => parseSpain(await getText("https://nap.dgt.es/datex2/v3/dgt/DevicePublication/camaras_datex2_v36.xml", { route: "relay", timeout: 30000 })),
+    load: async () => parseSpain(await getText("https://nap.dgt.es/datex2/v3/dgt/DevicePublication/camaras_datex2_v37.xml", { route: "relay", timeout: 30000 })),
   },
   { ...IS, place: "冰島", bbox: box(63.2, -24.6, 66.6, -13.4), minZoom: 5, load: async () => parseIceland(await json("https://gagnaveita.vegagerdin.is/api/vefmyndavelar2014_1", "relay")) },
   { ...NYC, place: "紐約市", bbox: box(40.45, -74.3, 40.95, -73.65), minZoom: 8, load: async () => parseNyc(await json("https://webcams.nyctmc.org/api/cameras", "relay")) },

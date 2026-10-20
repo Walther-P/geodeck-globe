@@ -109,9 +109,8 @@ export const RELAY_RULES: RelayRule[] = [
   ...(
     [
       ["cam-nz", "trafficnz.info", /^\/service\/traffic\/rest\/4\/cameras\/all$/],
-      ["cam-qld", "api.qldtraffic.qld.gov.au", /^\/v1\/webcams$/],
       ["cam-nsw", "www.livetraffic.com", /^\/datajson\/all-feeds-web\.json$/],
-      ["cam-es", "nap.dgt.es", /^\/datex2\/v3\/dgt\/DevicePublication\/camaras_datex2_v36\.xml$/],
+      ["cam-es", "nap.dgt.es", /^\/datex2\/v3\/dgt\/DevicePublication\/camaras_datex2_v\d+\.xml$/],
       ["cam-is", "gagnaveita.vegagerdin.is", /^\/api\/vefmyndavelar2014_1$/],
       ["cam-nyc", "webcams.nyctmc.org", /^\/api\/cameras$/],
       ["cam-md", "chartexp1.sha.maryland.gov", /^\/CHARTExportClientService\/getCameraMapDataJSON\.do$/],
@@ -173,6 +172,22 @@ export function withSiteKey(url: URL, rule: RelayRule, keys: Partial<Record<Site
   if (rule.siteKey.param) out.searchParams.set(rule.siteKey.param, key);
   if (rule.siteKey.header) headers[rule.siteKey.header] = key;
   return { url: out, headers };
+}
+
+/**
+ * Where to follow a redirect, if anywhere: only a plain GET feed moving
+ * within its own allowed paths (Spain renames its camera file each version).
+ * Requests that carry a key never follow.
+ */
+export function redirectWithinRule(from: URL, location: string | null, rule: RelayRule): URL | null {
+  if (!location || rule.keyed || rule.siteKey || rule.method !== "GET") return null;
+  let next: URL;
+  try {
+    next = new URL(location, from);
+  } catch {
+    return null;
+  }
+  return matchRelayRule(next.toString(), "GET")?.rule.id === rule.id ? next : null;
 }
 
 export const MAX_RELAY_BYTES = 12 * 1024 * 1024;

@@ -216,12 +216,11 @@ const results = await page.evaluate(async (keys) => {
   const cams = [
     ["Cams Hong Kong", "https://static.data.gov.hk/td/traffic-snapshot-images/code/Traffic_Camera_Locations_Tc.xml", (t) => `${(String(t).match(/<image>/g) ?? []).length} cameras`],
     ["Cams Singapore", "https://api.data.gov.sg/v1/transport/traffic-images", (d) => `${n(d.items?.[0]?.cameras)} cameras`],
-    ["Cams New Zealand", "https://trafficnz.info/service/traffic/rest/4/cameras/all", (d) => `${n(d.response?.camera)} cameras`],
-    ["Cams Queensland", "https://api.qldtraffic.qld.gov.au/v1/webcams?apikey=3e83add325cbb69ac4d8e5bf433d770b", (d) => `${n(d.features)} cameras`],
+    ["Cams New Zealand", "https://trafficnz.info/service/traffic/rest/4/cameras/all", (d) => `${n(d.response?.camera)} cameras`, { headers: { accept: "application/json" } }],
     ["Cams NSW", "https://www.livetraffic.com/datajson/all-feeds-web.json", (d) => `${d.filter?.((f) => f.eventCategory === "liveCams").length} cameras`],
     ["Cams Finland", "https://tie.digitraffic.fi/api/weathercam/v1/stations", (d) => `${n(d.features)} stations`],
     ["Cams London", "https://api.tfl.gov.uk/Place/Type/JamCam", (d) => `${n(d)} cameras`],
-    ["Cams Spain", "https://nap.dgt.es/datex2/v3/dgt/DevicePublication/camaras_datex2_v36.xml", (t) => `${(String(t).match(/deviceUrl>/g) ?? []).length / 2} cameras`],
+    ["Cams Spain", "https://nap.dgt.es/datex2/v3/dgt/DevicePublication/camaras_datex2_v37.xml", (t) => `${(String(t).match(/deviceUrl>/g) ?? []).length / 2} cameras`],
     ["Cams Iceland", "https://gagnaveita.vegagerdin.is/api/vefmyndavelar2014_1", (d) => `${n(d)} cameras`],
     ["Cams New York City", "https://webcams.nyctmc.org/api/cameras", (d) => `${n(d)} cameras`],
     ["Cams California D7", "https://cwwp2.dot.ca.gov/data/d7/cctv/cctvStatusD07.json", (d) => `${n(d.data)} cameras`],
@@ -233,7 +232,8 @@ const results = await page.evaluate(async (keys) => {
     [
       "Cams Toronto",
       "https://ckan0.cf.opendata.inter.prod-toronto.ca/dataset/a3309088-5fd4-4d34-8297-77c8301840ac/resource/4a568300-c7f8-496d-b150-dff6f5dc6d4f/download/traffic-camera-list-4326.geojson",
-      (d) => `${n(d.features)} cameras`,
+      // Served as application/octet-stream, so it arrives as text.
+      (d) => `${n((typeof d === "string" ? JSON.parse(d) : d).features)} cameras`,
     ],
     // Keyed by the site (Worker secrets); the relay answers 501 until the owner adds the key.
     ["Cams Windy (site key)", "https://api.windy.com/webcams/api/v3/webcams?nearby=35.5,139.5,60&categories=traffic&include=images,location,urls&limit=5", (d) => `${n(d.webcams)} webcams of ${d.total}; ${JSON.stringify(d.webcams?.[0] ?? {}).slice(0, 160)}`],
@@ -241,7 +241,7 @@ const results = await page.evaluate(async (keys) => {
     ["Cams Alberta 511 (site key)", "https://511.alberta.ca/api/v2/get/cameras?format=json", (d) => `${n(d)} cameras; ${JSON.stringify(d[0] ?? {}).slice(0, 160)}`],
     ["Cams 511NY (site key)", "https://511ny.org/api/getcameras?format=json", (d) => `${n(d)} cameras; ${JSON.stringify(d[0] ?? {}).slice(0, 160)}`],
   ];
-  for (const [name, url, check] of cams) await probe(name, url, check, {}, 240);
+  for (const [name, url, check, init] of cams) await probe(name, url, check, init ?? {}, 240);
   // Parking abroad: lots come from the basemap tiles, details from the OSM API on tap.
   await probe("OSM API parking details", "https://api.openstreetmap.org/api/0.6/way/150920360.json", (d) => JSON.stringify(must(d.elements?.[0]?.tags, "tags")));
   return rows;

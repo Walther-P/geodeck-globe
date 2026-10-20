@@ -21,7 +21,7 @@ import {
   parseToronto,
   xmlText,
 } from "../src/data/worldcams";
-import { matchRelayRule, withSiteKey } from "../worker/relay";
+import { matchRelayRule, redirectWithinRule, withSiteKey } from "../worker/relay";
 
 // Rows trimmed from what each feed answered on 2026-10-20 (scripts/live-probe.mjs checks them daily).
 
@@ -132,9 +132,8 @@ describe("world road cameras", () => {
   it("only sends lists through the relay that it allows", () => {
     const relayed = [
       "https://trafficnz.info/service/traffic/rest/4/cameras/all",
-      "https://api.qldtraffic.qld.gov.au/v1/webcams?apikey=3e83add325cbb69ac4d8e5bf433d770b",
       "https://www.livetraffic.com/datajson/all-feeds-web.json",
-      "https://nap.dgt.es/datex2/v3/dgt/DevicePublication/camaras_datex2_v36.xml",
+      "https://nap.dgt.es/datex2/v3/dgt/DevicePublication/camaras_datex2_v37.xml",
       "https://gagnaveita.vegagerdin.is/api/vefmyndavelar2014_1",
       "https://webcams.nyctmc.org/api/cameras",
       "https://chartexp1.sha.maryland.gov/CHARTExportClientService/getCameraMapDataJSON.do",
@@ -183,6 +182,17 @@ describe("world road cameras", () => {
     });
     expect(w).toHaveLength(1);
     expect(w[0]).toMatchObject({ id: "windy:1170166404", name: "Shibuya Crossing，Tokyo", page: "https://www.windy.com/webcams/1170166404", refreshS: 300 });
+  });
+
+  it("follows a redirect only within the same allowed feed", () => {
+    const es = matchRelayRule("https://nap.dgt.es/datex2/v3/dgt/DevicePublication/camaras_datex2_v36.xml", "GET")!;
+    expect(redirectWithinRule(es.url, "https://nap.dgt.es/datex2/v3/dgt/DevicePublication/camaras_datex2_v37.xml", es.rule)?.pathname).toBe("/datex2/v3/dgt/DevicePublication/camaras_datex2_v37.xml");
+    expect(redirectWithinRule(es.url, "/datex2/v3/dgt/DevicePublication/camaras_datex2_v38.xml", es.rule)?.host).toBe("nap.dgt.es");
+    expect(redirectWithinRule(es.url, "https://evil.example/camaras_datex2_v37.xml", es.rule)).toBeNull();
+    expect(redirectWithinRule(es.url, "https://nap.dgt.es/datex2/v3/dgt/SituationPublication/all.xml", es.rule)).toBeNull();
+    expect(redirectWithinRule(es.url, null, es.rule)).toBeNull();
+    const keyed = matchRelayRule("https://511on.ca/api/v2/get/cameras?format=json", "GET")!;
+    expect(redirectWithinRule(keyed.url, "https://511on.ca/api/v2/get/cameras?format=xml", keyed.rule)).toBeNull();
   });
 
   it("gives every source a sane area and a unique id", () => {

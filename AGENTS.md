@@ -21,7 +21,7 @@
 - `src/data/google.ts`：Google 地點搜尋。站長金鑰在建置時由 `GOOGLE_MAPS_KEY` secret 注入
   （`VITE_GOOGLE_MAPS_KEY`，瀏覽器金鑰，必須限制網址）；使用者也可在設定填自己的（優先使用）
 - `worker/camera.ts` + `/api/cam`：只限 `*.gov.tw` 的 http 影像串流轉接（https 頁面不能載入 http 影像）
-- `src/data/worldcams.ts`：國外官方道路影像（17 個地區＋要站長金鑰的 Windy、511），地圖看到該地區才讀清單；
+- `src/data/worldcams.ts`：國外官方道路影像（16 個地區＋要站長金鑰的 Windy、511），地圖看到該地區才讀清單；
   解析器都是純函式（`tests/world.test.ts`）。新增來源前先用 CI 實測清單與影像網址（`scripts/live-probe.mjs` 的 Cams 列）
 - `src/data/osmparking.ts`：台灣停車目錄以外的停車場，直接用底圖向量圖磚的 `poi`／`class=parking`（`pk-osm` 圖層），
   點開才用 OSM API 讀標籤；Overpass 公共伺服器常常滿載，不要當主要來源

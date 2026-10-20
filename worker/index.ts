@@ -1,4 +1,4 @@
-import { MAX_RELAY_BYTES, isSameOriginRequest, matchRelayRule, withSiteKey, type SiteKeyName } from "./relay";
+import { MAX_RELAY_BYTES, isSameOriginRequest, matchRelayRule, redirectWithinRule, withSiteKey, type SiteKeyName } from "./relay";
 import { cameraContentType, cameraTarget } from "./camera";
 import { allowedHop, coordinatesFromHtml, hasCoordinates, resolvableStart } from "./resolve";
 
@@ -55,13 +55,14 @@ async function relay(request: Request, env: Env, ctx: ExecutionContext): Promise
 
   let upstream: Response;
   try {
-    upstream = await fetch(upstreamRequest.url.toString(), {
-      method: rule.method,
-      headers,
-      body: rule.method === "POST" ? await request.arrayBuffer() : undefined,
-      signal: AbortSignal.timeout(20000),
-      redirect: "manual",
-    });
+    const body = rule.method === "POST" ? await request.arrayBuffer() : undefined;
+    const send = (target: URL) => fetch(target.toString(), { method: rule.method, headers, body, signal: AbortSignal.timeout(20000), redirect: "manual" });
+    upstream = await send(upstreamRequest.url);
+    const moved = upstream.status >= 300 && upstream.status < 400 ? redirectWithinRule(upstreamRequest.url, upstream.headers.get("location"), rule) : null;
+    if (moved) {
+      await upstream.body?.cancel();
+      upstream = await send(moved);
+    }
   } catch {
     return (await fromStale()) ?? fail(504, "upstream timeout");
   }
