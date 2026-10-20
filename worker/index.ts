@@ -1,4 +1,4 @@
-import { MAX_RELAY_BYTES, isSameOriginRequest, matchRelayRule, redirectWithinRule, withSiteKey, type SiteKeyName } from "./relay";
+import { MAX_RELAY_BYTES, isSameOriginRequest, matchRelayRule, redirectWithinRule, relayCacheKeys, withSiteKey, type SiteKeyName } from "./relay";
 import { cameraContentType, cameraTarget } from "./camera";
 import { allowedHop, coordinatesFromHtml, hasCoordinates, resolvableStart } from "./resolve";
 
@@ -25,9 +25,10 @@ async function relay(request: Request, env: Env, ctx: ExecutionContext): Promise
   if (!upstreamRequest) return fail(501, "this source is not set up on this site");
 
   const cache = (caches as unknown as { default: Cache }).default;
-  const cacheKey = new Request(url.toString(), { method: "GET" });
+  const keys = relayCacheKeys(url, request.headers.get("accept"));
+  const cacheKey = new Request(keys.fresh, { method: "GET" });
   // A longer-lived copy of the last good answer, for when the upstream refuses us.
-  const staleKey = new Request(`https://stale.relay.invalid/?u=${encodeURIComponent(url.toString())}`, { method: "GET" });
+  const staleKey = new Request(keys.stale, { method: "GET" });
   const fromStale = async (): Promise<Response | null> => {
     if (!rule.staleTtl || rule.keyed) return null;
     const hit = await cache.match(staleKey);

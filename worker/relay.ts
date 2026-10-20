@@ -190,6 +190,15 @@ export function redirectWithinRule(from: URL, location: string | null, rule: Rel
   return matchRelayRule(next.toString(), "GET")?.rule.id === rule.id ? next : null;
 }
 
+/**
+ * Cache keys for a relayed answer: the feed URL plus the format asked for,
+ * since some feeds (New Zealand) answer XML or JSON depending on Accept.
+ */
+export function relayCacheKeys(url: URL, accept: string | null): { fresh: string; stale: string } {
+  const q = `u=${encodeURIComponent(url.toString())}&a=${encodeURIComponent(accept ?? "")}`;
+  return { fresh: `https://cache.relay.invalid/?${q}`, stale: `https://stale.relay.invalid/?${q}` };
+}
+
 export const MAX_RELAY_BYTES = 12 * 1024 * 1024;
 
 export function matchRelayRule(raw: string | null, method: string): { url: URL; rule: RelayRule } | null {

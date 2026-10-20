@@ -21,7 +21,7 @@ import {
   parseToronto,
   xmlText,
 } from "../src/data/worldcams";
-import { matchRelayRule, redirectWithinRule, withSiteKey } from "../worker/relay";
+import { matchRelayRule, redirectWithinRule, relayCacheKeys, withSiteKey } from "../worker/relay";
 
 // Rows trimmed from what each feed answered on 2026-10-20 (scripts/live-probe.mjs checks them daily).
 
@@ -193,6 +193,15 @@ describe("world road cameras", () => {
     expect(redirectWithinRule(es.url, null, es.rule)).toBeNull();
     const keyed = matchRelayRule("https://511on.ca/api/v2/get/cameras?format=json", "GET")!;
     expect(redirectWithinRule(keyed.url, "https://511on.ca/api/v2/get/cameras?format=xml", keyed.rule)).toBeNull();
+  });
+
+  it("keeps XML and JSON answers of the same feed apart in the relay cache", () => {
+    const nz = new URL("https://trafficnz.info/service/traffic/rest/4/cameras/all");
+    const json = relayCacheKeys(nz, "application/json");
+    expect(relayCacheKeys(nz, "*/*").fresh).not.toBe(json.fresh);
+    expect(relayCacheKeys(nz, "*/*").stale).not.toBe(json.stale);
+    expect(relayCacheKeys(nz, "application/json")).toEqual(json);
+    expect(json.fresh).not.toBe(json.stale);
   });
 
   it("gives every source a sane area and a unique id", () => {
