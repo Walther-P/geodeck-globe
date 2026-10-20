@@ -1,4 +1,4 @@
-# Temporary: probes candidate camera and parking sources from a network that can reach them.
+# Temporary: probes candidate camera sources from a network that can reach them.
 name: Scout sources
 on:
   push:
@@ -13,6 +13,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: |
-          mkdir /tmp/s && cp scripts/scout.mjs /tmp/s/ && cd /tmp/s && npm init -y >/dev/null && npm i @mapbox/vector-tile@2 pbf@4 >/dev/null 2>&1
-          echo '{"type":"module"}' > package.json && node scout.mjs
+      - run: node scripts/scout.mjs
