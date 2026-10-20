@@ -13,4 +13,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node scripts/scout.mjs
+      - run: |
+          mkdir /tmp/s && cp scripts/scout.mjs /tmp/s/ && cd /tmp/s && npm init -y >/dev/null && npm i @mapbox/vector-tile@2 pbf@4 >/dev/null 2>&1
+          echo '{"type":"module"}' > package.json && node scout.mjs
