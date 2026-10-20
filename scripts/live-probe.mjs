@@ -210,7 +210,6 @@ const results = await page.evaluate(async (keys) => {
       return `analysis ${JSON.stringify((an.Fix ?? an.fix ?? [])[0] ?? an).slice(0, 500)}; forecast ${JSON.stringify((fc.Fix ?? fc.fix ?? [])[0] ?? fc).slice(0, 500)}`;
     });
   } else rows.push({ name: "CWA", direct: "skipped", relay: "skipped", note: "no PROBE_CWA_KEY secret" });
-  return rows;
 
   // Road cameras abroad (src/data/worldcams.ts): each list, and how many cameras it has.
   const n = (v) => (Array.isArray(v) ? v.length : "not a list");
@@ -245,6 +244,7 @@ const results = await page.evaluate(async (keys) => {
   for (const [name, url, check] of cams) await probe(name, url, check, {}, 240);
   // Parking abroad: lots come from the basemap tiles, details from the OSM API on tap.
   await probe("OSM API parking details", "https://api.openstreetmap.org/api/0.6/way/150920360.json", (d) => JSON.stringify(must(d.elements?.[0]?.tags, "tags")));
+  return rows;
 }, keys);
 
 // Real-data screenshots of the app itself. The Tainan one also runs the
