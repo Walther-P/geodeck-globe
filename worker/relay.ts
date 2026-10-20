@@ -17,7 +17,17 @@ export interface RelayRule {
    * fails (shown as `x-relay-cache: STALE`). Never for keyed rules.
    */
   staleTtl?: number;
+  /**
+   * The site's own key for this upstream, kept as a Worker secret and added
+   * here, so it never reaches the browser. Without the secret the rule
+   * answers 501 and the page leaves that source out.
+   */
+  siteKey?: { env: SiteKeyName; header?: string; param?: string };
 }
+
+/** Worker secrets the owner may set (GitHub secrets of the same name; see deploy.yml). */
+export const SITE_KEYS = ["WINDY_WEBCAMS_KEY", "ON511_KEY", "AB511_KEY", "NY511_KEY"] as const;
+export type SiteKeyName = (typeof SITE_KEYS)[number];
 
 export const RELAY_RULES: RelayRule[] = [
   {
@@ -94,6 +104,39 @@ export const RELAY_RULES: RelayRule[] = [
     keyed: false,
     staleTtl: 86400,
   },
+  // Official road-camera lists abroad (src/data/worldcams.ts) whose hosts do
+  // not answer browsers directly. Lists change rarely; images load directly.
+  ...(
+    [
+      ["cam-nz", "trafficnz.info", /^\/service\/traffic\/rest\/4\/cameras\/all$/],
+      ["cam-qld", "api.qldtraffic.qld.gov.au", /^\/v1\/webcams$/],
+      ["cam-nsw", "www.livetraffic.com", /^\/datajson\/all-feeds-web\.json$/],
+      ["cam-es", "nap.dgt.es", /^\/datex2\/v3\/dgt\/DevicePublication\/camaras_datex2_v36\.xml$/],
+      ["cam-is", "gagnaveita.vegagerdin.is", /^\/api\/vefmyndavelar2014_1$/],
+      ["cam-nyc", "webcams.nyctmc.org", /^\/api\/cameras$/],
+      ["cam-md", "chartexp1.sha.maryland.gov", /^\/CHARTExportClientService\/getCameraMapDataJSON\.do$/],
+      ["cam-bc", "www.drivebc.ca", /^\/api\/webcams\/$/],
+      ["cam-toronto", "ckan0.cf.opendata.inter.prod-toronto.ca", /^\/dataset\/[0-9a-f-]+\/resource\/[0-9a-f-]+\/download\/traffic-camera-list-4326\.geojson$/],
+    ] as const
+  ).map(([id, host, path]): RelayRule => ({ id, host, path, method: "GET", ttl: 3600, keyed: false, staleTtl: 7 * 86400 })),
+  // Camera feeds that need a key: the site's own, added by the Worker (siteKey).
+  {
+    id: "windy",
+    host: "api.windy.com",
+    path: /^\/webcams\/api\/v3\/webcams$/,
+    method: "GET",
+    // Image links in the answer expire, so it is not kept long.
+    ttl: 300,
+    keyed: false,
+    siteKey: { env: "WINDY_WEBCAMS_KEY", header: "x-windy-api-key" },
+  },
+  ...(
+    [
+      ["cam-on511", "511on.ca", /^\/api\/v2\/get\/cameras$/, "ON511_KEY"],
+      ["cam-ab511", "511.alberta.ca", /^\/api\/v2\/get\/cameras$/, "AB511_KEY"],
+      ["cam-ny511", "511ny.org", /^\/api\/getcameras$/, "NY511_KEY"],
+    ] as const
+  ).map(([id, host, path, env]): RelayRule => ({ id, host, path, method: "GET", ttl: 3600, keyed: false, staleTtl: 7 * 86400, siteKey: { env, param: "key" } })),
   {
     id: "tdx-token",
     host: "tdx.transportdata.tw",
@@ -119,6 +162,18 @@ export const RELAY_RULES: RelayRule[] = [
     keyed: true,
   },
 ];
+
+/** The upstream request with the site's key added; null when that key is not set. */
+export function withSiteKey(url: URL, rule: RelayRule, keys: Partial<Record<SiteKeyName, string>>): { url: URL; headers: Record<string, string> } | null {
+  if (!rule.siteKey) return { url, headers: {} };
+  const key = keys[rule.siteKey.env]?.trim();
+  if (!key) return null;
+  const out = new URL(url);
+  const headers: Record<string, string> = {};
+  if (rule.siteKey.param) out.searchParams.set(rule.siteKey.param, key);
+  if (rule.siteKey.header) headers[rule.siteKey.header] = key;
+  return { url: out, headers };
+}
 
 export const MAX_RELAY_BYTES = 12 * 1024 * 1024;
 

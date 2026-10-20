@@ -2,6 +2,7 @@
 
 import { Marker, type MapGeoJSONFeature } from "maplibre-gl";
 import { hasTdx } from "../data/keys";
+import { osmName, osmRef, osmUrl, parkingDetails } from "../data/osmparking";
 import { catalogLots, catalogSummary, kindLabel, liveStatus, mergeLots, type CatalogLot } from "../data/parking";
 import { parkedCar, setParkedCar } from "../data/places";
 import { parkingCameraLinks } from "../data/roads";
@@ -13,7 +14,7 @@ import { escapeHtml as esc, formatCoord, safeUrl } from "../lib/util";
 import { EMPTY, addLayers, hideLayers, setData } from "../map/globe";
 import { every, viewBounds, type AppContext, type Chip, type Lens } from "./lens";
 
-const LAYERS = ["pk-cluster", "pk-cluster-count", "pk-dot", "pk-sign", "pk-summary", "pk-summary-label"];
+const LAYERS = ["pk-cluster", "pk-cluster-count", "pk-dot", "pk-sign", "pk-summary", "pk-summary-label", "pk-osm"];
 
 export class ParkingLens implements Lens {
   id = "parking" as const;
@@ -30,6 +31,8 @@ export class ParkingLens implements Lens {
   private seq = 0;
   private moveTimer = 0;
   private carMarker: Marker | null = null;
+  /** Outside the Taiwan catalog: parking comes from the basemap's OpenStreetMap tiles. */
+  private world = false;
   private onMove = () => {
     clearTimeout(this.moveTimer);
     this.moveTimer = window.setTimeout(() => void this.refresh(), 450);
@@ -37,6 +40,7 @@ export class ParkingLens implements Lens {
 
   constructor(private ctx: AppContext) {
     ctx.onFeatureTap(["pk-sign", "pk-dot"], (f) => this.showLot(f));
+    ctx.onFeatureTap(["pk-osm"], (f) => void this.showOsmLot(f));
     ctx.onFeatureTap(["pk-cluster", "pk-summary"], (f) => {
       const c = (f.geometry as GeoJSON.Point).coordinates as [number, number];
       ctx.map.easeTo({ center: c, zoom: Math.max(ctx.map.getZoom() + 2, 12) });
@@ -68,6 +72,10 @@ export class ParkingLens implements Lens {
   }
 
   renderExtra(el: HTMLElement): void {
+    if (this.world) {
+      el.innerHTML = `<p class="legend"><span class="lg-lot">P</span>停車場（OpenStreetMap 全球資料）· 點開看收費、營業時間與總車位；台灣以外沒有即時格數</p>`;
+      return;
+    }
     el.innerHTML = `<p class="legend"><span class="lg-lot">P</span>停車場 <span class="lg-curb">路</span>路邊 <b class="lg-ok">12</b>剩餘格數 <b class="lg-low">3</b>快滿 <b class="lg-full">滿</b> <b class="lg-old">?</b>資料超過 5 分鐘</p>`;
   }
 
@@ -98,9 +106,21 @@ export class ParkingLens implements Lens {
     const view = viewBounds(map);
     const zoom = map.getZoom();
     try {
+      const summary = await catalogSummary(view);
+      if (seq !== this.seq) return;
+      const world = !summary.length;
+      if (world !== this.world) {
+        this.world = world;
+        this.ctx.refreshStrip("parking");
+      }
+      if (this.world) {
+        setData(map, "pk", EMPTY);
+        setData(map, "pk-summary", EMPTY);
+        this.drawLayers();
+        this.reportWorld(seq);
+        return;
+      }
       if (zoom < 11) {
-        const summary = await catalogSummary(view);
-        if (seq !== this.seq) return;
         setData(map, "pk", EMPTY);
         setData(map, "pk-summary", {
           type: "FeatureCollection",
@@ -108,7 +128,7 @@ export class ParkingLens implements Lens {
         });
         this.drawLayers();
         const total = summary.reduce((n, s) => n + s.count, 0);
-        this.ctx.status("parking", total ? `此範圍 ${total.toLocaleString()} 處停車位置 · 放大看個別停車場` : "此範圍沒有收錄的停車資料（目前只有台灣）");
+        this.ctx.status("parking", `此範圍 ${total.toLocaleString()} 處停車位置 · 放大看個別停車場`);
         return;
       }
       setData(map, "pk-summary", EMPTY);
@@ -202,7 +222,49 @@ export class ParkingLens implements Lens {
     return out;
   }
 
+  /** Status for the OpenStreetMap layer: how many lots are on screen once the tiles are in. */
+  private reportWorld(seq: number): void {
+    const map = this.ctx.map;
+    if (!this.on.lots) return this.ctx.status("parking", "停車場已關閉");
+    if (map.getZoom() < 14) return this.ctx.status("parking", "放大到街道會顯示這裡的停車場（OpenStreetMap 全球資料，沒有即時格數）");
+    this.ctx.status("parking", "讀取這附近的停車場…");
+    map.once("idle", () => {
+      if (seq !== this.seq || !this.active || !this.world) return;
+      const n = new Set(map.queryRenderedFeatures({ layers: ["pk-osm"] }).map((f) => f.id)).size;
+      this.ctx.status(
+        "parking",
+        n ? `畫面中 ${n} 處停車場（OpenStreetMap，沒有即時格數）· 點 P 看收費與營業時間` : "這附近 OpenStreetMap 沒有標記停車場（或地圖資料暫時載入失敗）",
+      );
+    });
+    map.triggerRepaint();
+  }
+
   private drawLayers(): void {
+    const map = this.ctx.map;
+    // Parking anywhere else in the world, straight from the basemap's vector tiles.
+    if (map.getSource("omt") && !map.getLayer("pk-osm"))
+      map.addLayer({
+        id: "pk-osm",
+        type: "symbol",
+        source: "omt",
+        "source-layer": "poi",
+        minzoom: 14,
+        filter: ["==", ["get", "class"], "parking"],
+        layout: {
+          "icon-image": "p-lot",
+          "icon-size": ["interpolate", ["linear"], ["zoom"], 14, 0.6, 17, 0.9],
+          "icon-padding": 1,
+          "text-field": ["step", ["zoom"], "", 16, ["coalesce", ["get", "name:zh-Hant"], ["get", "name"], ""]],
+          "text-font": ["Noto Sans Regular"],
+          "text-size": 10.5,
+          "text-anchor": "top",
+          "text-offset": [0, 1.1],
+          "text-max-width": 8,
+          "text-optional": true,
+        },
+        paint: { "text-color": "#93c5fd", "text-halo-color": "#04080d", "text-halo-width": 1.2 },
+      });
+    if (map.getLayer("pk-osm")) map.setLayoutProperty("pk-osm", "visibility", this.world && this.on.lots ? "visible" : "none");
     addLayers(this.ctx.map, [
       {
         id: "pk-summary",
@@ -321,15 +383,7 @@ export class ParkingLens implements Lens {
         <button class="btn" id="lotPark">我停在這裡</button>
       </div>`,
     );
-    const place = { lat: pos.lat, lng: pos.lng, title: name };
-    body.querySelector("#lotGo")!.addEventListener("click", () => this.ctx.openPlace(place, "navigate"));
-    body.querySelector("#lotPlace")!.addEventListener("click", () => this.ctx.openPlace(place));
-    body.querySelector("#lotPark")!.addEventListener("click", () => {
-      setParkedCar({ lat: pos.lat, lng: pos.lng, savedAt: Date.now(), note: name });
-      this.drawCar();
-      this.ctx.refreshStrip("parking");
-      this.ctx.toast("已記住停車位置");
-    });
+    this.wireLotActions(body, { lat: pos.lat, lng: pos.lng, title: name });
     try {
       const links = await parkingCameraLinks();
       const hit = links.find((l) => l.parkingIds.includes(id));
@@ -342,6 +396,60 @@ export class ParkingLens implements Lens {
     } catch {
       /* camera links are optional */
     }
+  }
+
+  /** A lot from the OpenStreetMap layer: the tile gives name and place; the OSM API the rest. */
+  private async showOsmLot(f: MapGeoJSONFeature): Promise<void> {
+    const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates;
+    const ref = osmRef(f.id);
+    const title = osmName(f.properties) || "停車場";
+    const body = this.ctx.sheet.open(
+      "lot",
+      "PARKING",
+      title,
+      `<div id="osmLot"><p class="muted">讀取停車場資料…</p></div>
+      <p class="micro">資料：© OpenStreetMap 貢獻者（ODbL）${ref ? ` · <a href="${esc(osmUrl(ref))}" target="_blank" rel="noopener">原始資料</a>` : ""}。這裡沒有即時車位；收費與開放時間以現場公告為準。</p>
+      <div class="actions">
+        <button class="btn primary" id="lotGo">導航到這裡</button>
+        <button class="btn" id="lotPlace">這裡的天氣</button>
+        <button class="btn" id="lotPark">我停在這裡</button>
+      </div>`,
+    );
+    this.wireLotActions(body, { lat, lng, title });
+    const el = body.querySelector("#osmLot")!;
+    if (!ref) {
+      el.innerHTML = `<p class="muted">停車場 · 沒有更多資料</p>`;
+      return;
+    }
+    try {
+      const d = await parkingDetails(ref);
+      if (!d) {
+        el.innerHTML = `<p class="muted">停車場 · 這筆資料已更新或移除</p>`;
+        return;
+      }
+      const rows: string[] = [];
+      if (d.closed) rows.push(`<p><span class="badge full">不對外開放</span> 標記為私人停車場</p>`);
+      rows.push(`<p class="muted">${esc(kindLabel(d.kind))} · 沒有即時車位</p>`);
+      if (d.total) rows.push(`<p>總車位：${d.total}</p>`);
+      if (d.rate) rows.push(`<p>費率：${esc(d.rate)}</p>`);
+      if (d.hours) rows.push(`<p>開放時間：<span class="mono">${esc(d.hours)}</span></p>`);
+      if (d.address) rows.push(`<p>地址：${esc(d.address)}</p>`);
+      if (d.notes.length) rows.push(`<p class="muted">${esc(d.notes.join("；"))}</p>`);
+      el.innerHTML = rows.join("");
+    } catch {
+      el.innerHTML = `<p class="muted">停車場 · 暫時讀不到收費與營業時間</p>`;
+    }
+  }
+
+  private wireLotActions(body: HTMLElement, place: { lat: number; lng: number; title: string }): void {
+    body.querySelector("#lotGo")!.addEventListener("click", () => this.ctx.openPlace(place, "navigate"));
+    body.querySelector("#lotPlace")!.addEventListener("click", () => this.ctx.openPlace(place));
+    body.querySelector("#lotPark")!.addEventListener("click", () => {
+      setParkedCar({ lat: place.lat, lng: place.lng, savedAt: Date.now(), note: place.title });
+      this.drawCar();
+      this.ctx.refreshStrip("parking");
+      this.ctx.toast("已記住停車位置");
+    });
   }
 
   // ---- My car -----------------------------------------------------------

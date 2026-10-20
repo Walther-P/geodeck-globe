@@ -20,6 +20,9 @@
 | 測速執法點 | 內政部警政署「測速執法設置點」[資料集 7320](https://data.gov.tw/dataset/7320)（2026-09-20 快照，1,895 筆） | 打包 | 政府資料開放授權條款第 1 版 | 手動重建 |
 | 公路影像目錄 | 高速公路局、公路局影像（座標與名稱來自 GeoDeck 0.7 的目錄快照，2026-09-20） | 打包；影像本身由主管機關伺服器提供 | 各主管機關 | 手動重建 |
 | 停車場影像關聯 | 人工核對（目前：冷水坑 1 號停車場入口） | 打包 `parking-cameras.json` | — | 90 天未複核自動停用 |
+| 全球停車場位置 | OpenStreetMap 的 `amenity=parking`，直接取自底圖的 OpenFreeMap 向量圖磚（`poi` 圖層 `class=parking`，16 級以上顯示名稱） | 不另外連線；點開才向 [OpenStreetMap API](https://wiki.openstreetmap.org/wiki/API_v0.6) 讀一筆的標籤（總車位、收費、營業時間、限顧客、私人）。只在台灣停車目錄以外的地方使用 | ODbL（© OpenStreetMap 貢獻者） | 每週（圖磚） |
+| 國外道路影像（免金鑰） | 香港運輸署、新加坡 LTA（data.gov.sg）、紐西蘭 NZTA、昆士蘭 QLDTraffic、新南威爾斯 Live Traffic、芬蘭 Fintraffic Digitraffic、倫敦 TfL JamCams、西班牙 DGT（DATEX II）、冰島 Vegagerðin、紐約市 NYCDOT、加州 Caltrans（12 區）、愛荷華 DOT、馬里蘭 CHART（只有 HLS 影片）、卑詩省 DriveBC、渥太華、卡加利、多倫多 | 地圖看到該地區才讀清單（`src/data/worldcams.ts`）；不允許瀏覽器讀清單的走轉送（快取 1 小時）；影像本身由各機關伺服器直接提供，開著時每 30 秒至 5 分鐘重新載入 | 各機關開放資料條款（TfL：Powered by TfL Open Data；Digitraffic：CC BY 4.0；data.gov.sg：Singapore Open Data Licence；香港：資料一線通條款） | 30 秒至 10 分鐘（影像） |
+| 國外道路影像（站長金鑰） | [Windy Webcams](https://api.windy.com/webcams)（全球，交通類）、安大略 511ON、亞伯達 511、紐約州 511NY | 金鑰是 Worker secret，由轉送加在送出的請求上，網頁看不到；沒設金鑰時轉送回 501，App 不顯示該來源 | 各網站條款；Windy 免費方案需標示來源、影像連結會過期 | 5 分鐘至 1 小時 |
 | 地點搜尋、反查地名 | [Photon](https://photon.komoot.io)（OpenStreetMap） | 直連 | ODbL；公共伺服器合理使用 | — |
 | 底圖（Google） | Google Map Tiles API 2D 圖磚（roadmap／satellite／terrain，layerTraffic、layerStreetview） | 站長金鑰或使用者自己的金鑰，瀏覽器直接讀；session 存在瀏覽器到過期前 1 天；不經本站轉送、不快取圖磚；顯示 Google 標誌與 viewport 版權字 | Google Maps Platform 條款；費用由金鑰擁有者負擔（每月 10 萬格免費） | 路況即時 |
 | 地點搜尋（Google） | Google Places（Maps JavaScript API 的 Places 程式庫） | 同上；只在 Google 底圖時使用 | Google Maps Platform 條款；費用由金鑰擁有者負擔 | 即時 |
@@ -66,6 +69,8 @@ twipcam 轉載的靜態快照：只在有人點開那支鏡頭時才載入，標
 | App 端到端（臺南停車＋TDX 金鑰） | — | 可 | 正式網站實測：「577 處 · 即時：停車場 76/108、路段 451/451 有 5 分鐘內資料」 |
 | TDX 路邊停車 | — | 可 | `ParkingSegments`（`ParkingSegmentPosition` 為點）與 `CurbParkingSegmentAvailabilities`（每分鐘更新，有 `DataCollectTime`）；臺南、臺北已實測 |
 | 氣象署 | 可 | 可 | 特報、地震報告、颱風（欄位為大寫開頭，例如 `TropicalCyclones.TropicalCyclone`） |
+| 國外道路影像清單（2026-10-20） | 香港、新加坡、芬蘭、倫敦、加州、愛荷華、渥太華、卡加利可 | 紐西蘭、昆士蘭、新南威爾斯、西班牙、冰島、紐約市、馬里蘭、卑詩省、多倫多要轉送 | 影像網址都試過能載入；奧斯汀（403）、魁北克（403）、德國 Autobahn（清單空）、維吉尼亞（404）、斯洛維尼亞（502）不能用；安大略、亞伯達、華盛頓州要金鑰 |
+| 全球停車（OpenStreetMap） | Overpass 公共伺服器 4 台都忙碌或逾時 | — | 所以改從底圖向量圖磚讀：台北一格 z14 有 200 處、新宿 347 處、倫敦 97 處、首爾 172 處停車場；圖磚 id 去掉最後一位就是 OSM id（尾數 1 點、2 線），點開用 OSM API 讀標籤（允許瀏覽器讀） |
 
 公路局、高公局影像用 `<img>` 顯示，不需要 CORS；它們的伺服器可能擋國外 IP，所以 CI 的直連結果不代表台灣使用者的情況。
 

@@ -9,6 +9,8 @@
 #   PROBE_TDX_ID, PROBE_TDX_SECRET, PROBE_CWA_KEY
 # Optional, bundled into the page for everyone's Google place search:
 #   GOOGLE_MAPS_KEY  (a browser key restricted to this site's URL)
+# Optional camera keys, copied to the Worker as secrets (never into the page):
+#   WINDY_WEBCAMS_KEY, ON511_KEY, AB511_KEY, NY511_KEY
 name: Build and deploy
 
 on:
@@ -85,6 +87,30 @@ jobs:
           url=$(grep -oE 'https://geodeck-globe\.[a-z0-9.-]+\.workers\.dev' deploy.log | head -n 1)
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "### Deployed: $url" >> "$GITHUB_STEP_SUMMARY"
+      # Camera API keys the owner may add as GitHub secrets become Worker
+      # secrets; the relay adds them to those upstream requests only.
+      - name: Camera keys to Worker secrets
+        if: steps.deploy.outputs.url != ''
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WINDY_WEBCAMS_KEY: ${{ secrets.WINDY_WEBCAMS_KEY }}
+          ON511_KEY: ${{ secrets.ON511_KEY }}
+          AB511_KEY: ${{ secrets.AB511_KEY }}
+          NY511_KEY: ${{ secrets.NY511_KEY }}
+        run: |
+          keys="$RUNNER_TEMP/camera-keys.json"
+          node -e '
+            const o = {};
+            for (const k of ["WINDY_WEBCAMS_KEY", "ON511_KEY", "AB511_KEY", "NY511_KEY"]) {
+              const v = (process.env[k] || "").trim();
+              if (v) o[k] = v;
+            }
+            require("fs").writeFileSync(process.argv[1], JSON.stringify(o));
+            console.log("camera keys set: " + (Object.keys(o).join(", ") || "none"));
+          ' "$keys"
+          if [ "$(cat "$keys")" != "{}" ]; then npx wrangler secret bulk "$keys"; fi
+          rm -f "$keys"
       - name: Live data probe (local Worker)
         continue-on-error: true
         env:

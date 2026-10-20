@@ -1,10 +1,8 @@
-import { MAX_RELAY_BYTES, isSameOriginRequest, matchRelayRule } from "./relay";
+import { MAX_RELAY_BYTES, isSameOriginRequest, matchRelayRule, withSiteKey, type SiteKeyName } from "./relay";
 import { cameraContentType, cameraTarget } from "./camera";
 import { allowedHop, coordinatesFromHtml, hasCoordinates, resolvableStart } from "./resolve";
 
-interface Env {
-  ASSETS: Fetcher;
-}
+type Env = { ASSETS: Fetcher } & Partial<Record<SiteKeyName, string>>;
 
 const FORWARDED_REQUEST_HEADERS = ["accept", "authorization", "content-type"];
 const FORWARDED_RESPONSE_HEADERS = ["content-type", "last-modified", "etag", "retry-after"];
@@ -17,12 +15,14 @@ function fail(status: number, message: string): Response {
   });
 }
 
-async function relay(request: Request, ctx: ExecutionContext): Promise<Response> {
+async function relay(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const self = new URL(request.url);
   if (!isSameOriginRequest(request.headers, self.origin)) return fail(403, "relay is for this site only");
   const match = matchRelayRule(self.searchParams.get("u"), request.method);
   if (!match) return fail(400, "upstream not allowed");
   const { url, rule } = match;
+  const upstreamRequest = withSiteKey(url, rule, env);
+  if (!upstreamRequest) return fail(501, "this source is not set up on this site");
 
   const cache = (caches as unknown as { default: Cache }).default;
   const cacheKey = new Request(url.toString(), { method: "GET" });
@@ -51,10 +51,11 @@ async function relay(request: Request, ctx: ExecutionContext): Promise<Response>
     const value = request.headers.get(name);
     if (value && (rule.keyed || name !== "authorization")) headers.set(name, value);
   }
+  for (const [name, value] of Object.entries(upstreamRequest.headers)) headers.set(name, value);
 
   let upstream: Response;
   try {
-    upstream = await fetch(url.toString(), {
+    upstream = await fetch(upstreamRequest.url.toString(), {
       method: rule.method,
       headers,
       body: rule.method === "POST" ? await request.arrayBuffer() : undefined,
@@ -191,7 +192,7 @@ async function cameraProxy(request: Request): Promise<Response> {
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
-    if (url.pathname === "/relay") return relay(request, ctx);
+    if (url.pathname === "/relay") return relay(request, env, ctx);
     if (url.pathname === "/api/resolve") return resolveLink(request, ctx);
     if (url.pathname === "/api/cam") return cameraProxy(request);
     if (url.pathname.startsWith("/api/")) return fail(404, "not found");

@@ -211,15 +211,52 @@ const results = await page.evaluate(async (keys) => {
     });
   } else rows.push({ name: "CWA", direct: "skipped", relay: "skipped", note: "no PROBE_CWA_KEY secret" });
   return rows;
+
+  // Road cameras abroad (src/data/worldcams.ts): each list, and how many cameras it has.
+  const n = (v) => (Array.isArray(v) ? v.length : "not a list");
+  const cams = [
+    ["Cams Hong Kong", "https://static.data.gov.hk/td/traffic-snapshot-images/code/Traffic_Camera_Locations_Tc.xml", (t) => `${(String(t).match(/<image>/g) ?? []).length} cameras`],
+    ["Cams Singapore", "https://api.data.gov.sg/v1/transport/traffic-images", (d) => `${n(d.items?.[0]?.cameras)} cameras`],
+    ["Cams New Zealand", "https://trafficnz.info/service/traffic/rest/4/cameras/all", (d) => `${n(d.response?.camera)} cameras`],
+    ["Cams Queensland", "https://api.qldtraffic.qld.gov.au/v1/webcams?apikey=3e83add325cbb69ac4d8e5bf433d770b", (d) => `${n(d.features)} cameras`],
+    ["Cams NSW", "https://www.livetraffic.com/datajson/all-feeds-web.json", (d) => `${d.filter?.((f) => f.eventCategory === "liveCams").length} cameras`],
+    ["Cams Finland", "https://tie.digitraffic.fi/api/weathercam/v1/stations", (d) => `${n(d.features)} stations`],
+    ["Cams London", "https://api.tfl.gov.uk/Place/Type/JamCam", (d) => `${n(d)} cameras`],
+    ["Cams Spain", "https://nap.dgt.es/datex2/v3/dgt/DevicePublication/camaras_datex2_v36.xml", (t) => `${(String(t).match(/deviceUrl>/g) ?? []).length / 2} cameras`],
+    ["Cams Iceland", "https://gagnaveita.vegagerdin.is/api/vefmyndavelar2014_1", (d) => `${n(d)} cameras`],
+    ["Cams New York City", "https://webcams.nyctmc.org/api/cameras", (d) => `${n(d)} cameras`],
+    ["Cams California D7", "https://cwwp2.dot.ca.gov/data/d7/cctv/cctvStatusD07.json", (d) => `${n(d.data)} cameras`],
+    ["Cams Iowa", "https://services.arcgis.com/8lRhdTsQyJpO52F1/arcgis/rest/services/Traffic_Cameras_View/FeatureServer/0/query?where=1%3D1&outFields=Desc_,ImageURL&f=geojson", (d) => `${n(d.features)} cameras`],
+    ["Cams Maryland", "https://chartexp1.sha.maryland.gov/CHARTExportClientService/getCameraMapDataJSON.do", (d) => `${n(d.data)} cameras`],
+    ["Cams British Columbia", "https://www.drivebc.ca/api/webcams/", (d) => `${n(d)} cameras`],
+    ["Cams Ottawa", "https://traffic.ottawa.ca/beta/camera_list", (d) => `${n(d)} cameras`],
+    ["Cams Calgary", "https://data.calgary.ca/resource/k7p9-kppz.json?$limit=2000", (d) => `${n(d)} cameras`],
+    [
+      "Cams Toronto",
+      "https://ckan0.cf.opendata.inter.prod-toronto.ca/dataset/a3309088-5fd4-4d34-8297-77c8301840ac/resource/4a568300-c7f8-496d-b150-dff6f5dc6d4f/download/traffic-camera-list-4326.geojson",
+      (d) => `${n(d.features)} cameras`,
+    ],
+    // Keyed by the site (Worker secrets); the relay answers 501 until the owner adds the key.
+    ["Cams Windy (site key)", "https://api.windy.com/webcams/api/v3/webcams?nearby=35.5,139.5,60&categories=traffic&include=images,location,urls&limit=5", (d) => `${n(d.webcams)} webcams of ${d.total}; ${JSON.stringify(d.webcams?.[0] ?? {}).slice(0, 160)}`],
+    ["Cams Ontario 511 (site key)", "https://511on.ca/api/v2/get/cameras?format=json", (d) => `${n(d)} cameras; ${JSON.stringify(d[0] ?? {}).slice(0, 160)}`],
+    ["Cams Alberta 511 (site key)", "https://511.alberta.ca/api/v2/get/cameras?format=json", (d) => `${n(d)} cameras; ${JSON.stringify(d[0] ?? {}).slice(0, 160)}`],
+    ["Cams 511NY (site key)", "https://511ny.org/api/getcameras?format=json", (d) => `${n(d)} cameras; ${JSON.stringify(d[0] ?? {}).slice(0, 160)}`],
+  ];
+  for (const [name, url, check] of cams) await probe(name, url, check, {}, 240);
+  // Parking abroad: lots come from the basemap tiles, details from the OSM API on tap.
+  await probe("OSM API parking details", "https://api.openstreetmap.org/api/0.6/way/150920360.json", (d) => JSON.stringify(must(d.elements?.[0]?.tags, "tags")));
 }, keys);
 
 // Real-data screenshots of the app itself. The Tainan one also runs the
 // parking lens end to end with the probe's TDX key (CI only, never shipped)
 // and records what the lens says about live counts.
-for (const [name, w, h, view, lenses, tdx] of [
+for (const [name, w, h, view, lenses, tdx, want] of [
   ["live-globe", 393, 852, { lng: 121, lat: 23.6, zoom: 1.8 }, ["sky"], false],
   ["live-taiwan", 393, 852, { lng: 120.9, lat: 23.6, zoom: 6.6 }, ["weather", "sky"], false],
   ["live-tainan", 393, 852, { lng: 120.205, lat: 22.992, zoom: 15.5 }, ["traffic", "parking"], true],
+  // Abroad: official cameras for the area, and OpenStreetMap parking from the basemap tiles.
+  ["live-hongkong", 393, 852, { lng: 114.17, lat: 22.3, zoom: 12 }, ["traffic"], false, ["App: Hong Kong cameras", /香港官方鏡頭/]],
+  ["live-tokyo", 393, 852, { lng: 139.7005, lat: 35.6905, zoom: 16 }, ["parking"], false, ["App: Tokyo parking (OSM)", /畫面中 \d+ 處停車場/]],
 ]) {
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   const appKeys = tdx && keys.tdxId ? { tdxId: keys.tdxId, tdxSecret: keys.tdxSecret, cwa: "", google: "" } : null;
@@ -244,6 +281,15 @@ for (const [name, w, h, view, lenses, tdx] of [
     }
     const flights = status.match(/航班[^·]*/)?.[0] ?? status;
     results.push({ name: "App: Taiwan flights", direct: /航班 \d+ 架/.test(flights) ? "ok" : "check", relay: "-", note: flights.slice(0, 200) });
+  }
+  if (want) {
+    let status = "";
+    for (let i = 0; i < 10; i++) {
+      status = (await p.textContent("#strip .strip-status").catch(() => "")) ?? "";
+      if (want[1].test(status)) break;
+      await p.waitForTimeout(3000);
+    }
+    results.push({ name: want[0], direct: want[1].test(status) ? "ok" : "check", relay: "-", note: status.slice(0, 200) });
   }
   if (appKeys) {
     // Wait for real counts; a rate-limited first try refreshes on its own a minute later.

@@ -5,10 +5,12 @@ import { hasTdx } from "../data/keys";
 import { bundledCameras, enforcementPoints, type EnforcementPoint } from "../data/roads";
 import { citiesAt } from "../data/taiwan";
 import { buses, cameraSrc, cctv, type Bus, type Camera } from "../data/tdx";
+import { CAM_SOURCES, hlsNative, windyNear } from "../data/worldcams";
+import { FeedError } from "../lib/net";
 import { ago } from "../lib/time";
-import { distance, escapeHtml as esc, safeUrl } from "../lib/util";
+import { boundsOverlap, distance, escapeHtml as esc, safeUrl } from "../lib/util";
 import { EMPTY, addLayers, hideLayers, points, setData } from "../map/globe";
-import { every, type AppContext, type Chip, type Lens } from "./lens";
+import { every, viewBounds, type AppContext, type Chip, type Lens } from "./lens";
 
 const LAYERS = ["tr-cam-cluster", "tr-cam-count", "tr-cam", "tr-speed", "tr-speed-label", "tr-bus", "tr-bus-label"];
 
@@ -19,6 +21,12 @@ export class TrafficLens implements Lens {
   private cams = new Map<string, Camera>();
   private camNote = "";
   private tdxCamScopes = new Set<string>();
+  /** Camera lists abroad: when each was fetched and whether it worked. */
+  private worldLists = new Map<string, { at: number; ok: boolean }>();
+  private worldLoading = new Set<string>();
+  /** Sources this site has no key for (the relay said 501): left out quietly. */
+  private notSetUp = new Set<string>();
+  private windyCells = new Set<string>();
   private speed: EnforcementPoint[] = [];
   private busRows: Bus[] = [];
   private busCity = "";
@@ -30,6 +38,7 @@ export class TrafficLens implements Lens {
     clearTimeout(this.moveTimer);
     this.moveTimer = window.setTimeout(() => {
       void this.loadTdxCameras();
+      void this.loadWorldCameras();
       void this.loadBuses();
     }, 700);
   };
@@ -102,8 +111,9 @@ export class TrafficLens implements Lens {
         this.camNote = `目錄 ${updatedAt.slice(0, 10)}`;
       }
       this.drawCameras();
-      this.notes.cameras = `影像 ${this.cams.size.toLocaleString()} 支（${this.camNote}${hasTdx() ? "＋TDX" : ""}）`;
+      this.reportCameras();
       void this.loadTdxCameras();
+      void this.loadWorldCameras();
     } catch (e) {
       this.notes.cameras = `影像目錄暫時無法取得：${(e as Error).message}`;
     }
@@ -115,7 +125,7 @@ export class TrafficLens implements Lens {
     setData(
       map,
       "tr-cams",
-      points([...this.cams.values()], (c) => ({ id: c.id, live: !!(c.image || c.mirror) })),
+      points([...this.cams.values()], (c) => ({ id: c.id, live: !!(c.image || c.mirror || c.video) })),
       { radius: 44, maxZoom: 11 },
     );
     addLayers(map, [
@@ -177,54 +187,162 @@ export class TrafficLens implements Lens {
     });
     if (added) {
       this.drawCameras();
-      this.notes.cameras = `影像 ${this.cams.size.toLocaleString()} 支（${this.camNote}＋TDX）`;
-      this.report();
+      this.reportCameras();
     }
+  }
+
+  /** Official cameras abroad: each list is fetched once the map looks at its area. */
+  private async loadWorldCameras(): Promise<void> {
+    if (!this.active || !this.on.cameras) return;
+    const map = this.ctx.map;
+    const view = viewBounds(map);
+    const zoom = map.getZoom();
+    const now = Date.now();
+    const due = CAM_SOURCES.filter((s) => {
+      const last = this.worldLists.get(s.id);
+      const stale = !last || now - last.at > (last.ok ? 6 * 3600000 : 5 * 60000);
+      return zoom >= s.minZoom && boundsOverlap(s.bbox, view) && stale && !this.worldLoading.has(s.id) && !this.notSetUp.has(s.id);
+    }).slice(0, 4);
+    if (due.length) for (const s of due) this.worldLoading.add(s.id);
+    void this.loadWindy();
+    this.reportCameras();
+    if (!due.length) return;
+    await Promise.all(
+      due.map(async (s) => {
+        try {
+          const cams = await s.load();
+          for (const id of this.cams.keys()) if (id.startsWith(`${s.id}:`)) this.cams.delete(id);
+          for (const c of cams) this.cams.set(c.id, c);
+          this.worldLists.set(s.id, { at: Date.now(), ok: true });
+        } catch (e) {
+          if (e instanceof FeedError && e.status === 501) this.notSetUp.add(s.id);
+          else this.worldLists.set(s.id, { at: Date.now(), ok: false });
+        } finally {
+          this.worldLoading.delete(s.id);
+        }
+      }),
+    );
+    if (!this.active) return;
+    this.drawCameras();
+    this.reportCameras();
+  }
+
+  /** Windy's worldwide webcam directory, around the map centre once zoomed in to a city. */
+  private async loadWindy(): Promise<void> {
+    const map = this.ctx.map;
+    if (this.notSetUp.has("windy") || map.getZoom() < 9) return;
+    const c = map.getCenter();
+    const { cell, data } = windyNear(c.lat, c.lng);
+    if (this.windyCells.has(cell)) return;
+    this.windyCells.add(cell);
+    try {
+      for (const cam of await data) this.cams.set(cam.id, cam);
+    } catch (e) {
+      if (e instanceof FeedError && e.status === 501) this.notSetUp.add("windy");
+      this.windyCells.delete(cell);
+      return;
+    }
+    if (!this.active) return;
+    this.drawCameras();
+    this.reportCameras();
+  }
+
+  private reportCameras(): void {
+    const map = this.ctx.map;
+    const view = viewBounds(map);
+    const here = CAM_SOURCES.filter((s) => boundsOverlap(s.bbox, view));
+    const places = (list: typeof here) => [...new Set(list.map((s) => s.place))].join("、");
+    const loaded = here.filter((s) => this.worldLists.get(s.id)?.ok);
+    const failed = here.filter((s) => this.worldLists.get(s.id)?.ok === false && !this.worldLoading.has(s.id));
+    const later = here.filter((s) => map.getZoom() < s.minZoom && !this.worldLists.has(s.id) && !s.needsKey);
+    const windy = this.windyCells.size ? "；Windy 網路攝影機" : "";
+    const parts = [`影像 ${this.cams.size.toLocaleString()} 支（台灣${this.camNote}${hasTdx() ? "＋TDX" : ""}${loaded.length ? `；${places(loaded)}官方鏡頭` : ""}${windy}）`];
+    if (here.some((s) => this.worldLoading.has(s.id))) parts.push("正在載入當地官方鏡頭…");
+    if (failed.length) parts.push(`${places(failed)}鏡頭暫時無法連線，稍後自動重試`);
+    if (later.length) parts.push(`放大會載入${places(later)}的官方鏡頭`);
+    this.notes.cameras = parts.join(" · ");
+    this.report();
   }
 
   showCamera(id: string): void {
     const c = this.cams.get(id);
     if (!c) return;
     const page = safeUrl(c.page);
-    const live = cameraSrc(c.image);
-    const snapshot = live ? null : cameraSrc(c.mirror);
-    const src = live ?? snapshot;
+    // A Taiwan MJPEG stream updates itself; stills (abroad, or a mirror) are reloaded.
+    const stream = c.refreshS ? null : cameraSrc(c.image);
+    const still = c.refreshS ? cameraSrc(c.image) : stream ? null : cameraSrc(c.mirror);
+    const every = c.refreshS ?? 30;
+    const hls = c.video && hlsNative() ? c.video : null;
+    const pace = every >= 60 ? `${Math.round(every / 60)} 分鐘` : `${every} 秒`;
+    let current = stream ?? still;
     let refresh = 0;
+    const media = hls
+      ? `<div class="cam"><video id="camVideo" src="${esc(hls)}" autoplay muted playsinline controls></video><span class="live-tag">● LIVE</span></div>`
+      : current
+        ? `<div class="cam"><p>影像載入中…</p><img id="camImg" alt="${esc(c.name)} 影像"><span class="live-tag">${stream ? "● LIVE" : "◷ 快照"}</span></div>`
+        : c.video
+          ? `<p class="muted">這支鏡頭只提供串流影片，iPhone 或 Safari 可以直接播放${page ? "；這個瀏覽器請開原站觀看" : ""}。</p>`
+          : `<p class="muted">這支鏡頭目前沒有可顯示的影像網址。</p>`;
+    const views =
+      !hls && c.views && c.views.length > 1
+        ? `<div class="chips cam-views">${c.views.map((v, i) => `<button class="chip" data-view="${i}" aria-pressed="${i === 0}">${esc(v.label)}</button>`).join("")}</div>`
+        : "";
     const body = this.ctx.sheet.open(
       "camera",
-      live ? "LIVE CAMERA" : "CAMERA SNAPSHOT",
+      hls || stream ? "LIVE CAMERA" : "CAMERA SNAPSHOT",
       c.name,
-      `${
-        src
-          ? `<div class="cam"><p>影像載入中…</p><img id="camImg" alt="${esc(c.name)} 影像"><span class="live-tag">${live ? "● LIVE" : "◷ 快照"}</span></div>`
-          : `<p class="muted">這支鏡頭目前沒有可顯示的影像網址。</p>`
-      }
-      <p class="micro">來源：${esc(c.source)}${snapshot ? "（每 30 秒自動更新）" : ""}。畫面時間以影像本身為準；載入失敗不代表道路有狀況。${page ? ` <a href="${esc(page)}" target="_blank" rel="noopener">原站</a>` : ""}</p>
+      `${media}${views}
+      <p class="micro">來源：${esc(c.source)}${still && !hls ? `（每 ${pace}自動更新）` : ""}。畫面時間以影像本身為準；載入失敗不代表道路有狀況。${page ? ` <a href="${esc(page)}" target="_blank" rel="noopener">原站</a>` : ""}</p>
       <div class="actions">
-        ${src ? `<button class="btn" id="camReload">重新整理</button>` : ""}
+        ${current && !hls ? `<button class="btn" id="camReload">重新整理</button>` : ""}
+        ${c.clip && !hls ? `<button class="btn" id="camClip">▶ 播放動態片段</button>` : ""}
         <button class="btn" id="camPlace">這裡的天氣與停車</button>
       </div>`,
       () => {
         clearInterval(refresh);
-        // Stop the MJPEG stream; otherwise it keeps downloading in the background.
+        // Stop streams; otherwise they keep downloading in the background.
         const img = document.getElementById("camImg") as HTMLImageElement | null;
         if (img) img.src = "";
+        const video = document.querySelector<HTMLVideoElement>(".cam video");
+        if (video) {
+          video.pause();
+          video.removeAttribute("src");
+          video.load();
+        }
       },
     );
     const img = body.querySelector<HTMLImageElement>("#camImg");
-    const load = () => {
-      if (!img || !src) return;
+    const load = async () => {
+      if (!img || !current) return;
+      // Some feeds give every frame its own URL; ask for the newest one.
+      if (c.latest) current = cameraSrc(await c.latest().catch(() => null)) ?? current;
       const p = img.previousElementSibling as HTMLElement;
       p.textContent = "影像載入中…";
       p.classList.remove("hidden");
       img.onload = () => p.classList.add("hidden");
       img.onerror = () => (p.textContent = "目前無法載入影像（可能維修中或來源暫停）");
-      img.src = `${src}${src.includes("?") ? "&" : "?"}_=${Date.now()}`;
+      img.src = `${current}${current.includes("?") ? "&" : "?"}_=${Date.now()}`;
     };
-    load();
-    // Stills go stale; the MJPEG streams update themselves.
-    if (snapshot) refresh = window.setInterval(load, 30000);
-    body.querySelector("#camReload")?.addEventListener("click", load);
+    void load();
+    if (still && !hls) refresh = window.setInterval(() => void load(), every * 1000);
+    body.querySelector("#camReload")?.addEventListener("click", () => void load());
+    body.querySelectorAll<HTMLElement>("[data-view]").forEach((b) =>
+      b.addEventListener("click", () => {
+        const v = c.views?.[Number(b.dataset.view)];
+        if (!v) return;
+        current = cameraSrc(v.image) ?? current;
+        body.querySelectorAll("[data-view]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+        void load();
+      }),
+    );
+    body.querySelector("#camClip")?.addEventListener("click", (e) => {
+      const box = body.querySelector(".cam");
+      if (!box || !c.clip) return;
+      clearInterval(refresh);
+      box.innerHTML = `<video src="${esc(c.clip)}" autoplay muted playsinline loop controls></video><span class="live-tag">▶ 片段</span>`;
+      (e.currentTarget as HTMLElement).remove();
+      body.querySelector("#camReload")?.remove();
+    });
     body.querySelector("#camPlace")?.addEventListener("click", () => this.ctx.openPlace({ lat: c.lat, lng: c.lng, title: c.name }));
   }
 

@@ -166,6 +166,15 @@ const fixtures = {
       { id: "l2", name: "Long March 2F | Shenzhou 23", net: new Date(now + 3 * 86400000).toISOString(), status: { abbrev: "TBC", name: "To Be Confirmed" }, launch_service_provider: { name: "CASC" }, pad: { name: "LC-43/91", latitude: "40.958", longitude: "100.291", location: { name: "Jiuquan, China" } } },
     ],
   }),
+  "static.data.gov.hk": () =>
+    `<?xml version="1.0" encoding="UTF-8"?><image-list>${[
+      ["H210F", "香港仔隧道灣仔入口 [H210F]", 22.2747, 114.17936],
+      ["H429F", "香港仔海傍道近魚市場 [H429F]", 22.24845, 114.1505],
+      ["K109F", "彌敦道近窩打老道 [K109F]", 22.3203, 114.1694],
+    ]
+      .map(([key, d, lat, lng]) => `<image><key>${key}</key><description>${d}</description><latitude>${lat}</latitude><longitude>${lng}</longitude><url>https://tdcctv.data.one.gov.hk/${key}.JPG</url></image>`)
+      .join("")}</image-list>`,
+  "tdcctv.data.one.gov.hk": () => GOOGLE_TILE,
   "photon.komoot.io": () => ({ features: [{ geometry: { coordinates: [120.2049, 22.9908] }, properties: { name: "赤崁樓", city: "臺南市", district: "中西區", country: "臺灣", countrycode: "TW" } }] }),
 };
 
@@ -188,6 +197,10 @@ const shots = [
   { name: "phone-place-card", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 14 }, lenses: ["weather"], click: true },
   { name: "phone-wind", w: 393, h: 852, view: { lng: 121, lat: 23.6, zoom: 6.2 }, lenses: ["weather"], chip: "wind", expect: /風場 .*m\/s/ },
   { name: "phone-radio", w: 393, h: 852, view: { lng: 121, lat: 23.8, zoom: 6.6 }, lenses: ["radio"], expect: /電台 [1-9]\d* 台/ },
+  // Official cameras abroad load for the area in view; tapping one opens its picture.
+  { name: "phone-hk-camera", w: 393, h: 852, view: { lng: 114.17936, lat: 22.2747, zoom: 15 }, lenses: ["traffic"], camera: "香港仔隧道灣仔入口" },
+  // Outside the Taiwan catalog, parking switches to OpenStreetMap from the basemap tiles.
+  { name: "phone-world-parking", w: 393, h: 852, view: { lng: 139.7005, lat: 35.6905, zoom: 16 }, lenses: ["parking"], expect: /OpenStreetMap/ },
   { name: "phone-settings", w: 393, h: 852, view: { lng: 121, lat: 23.6, zoom: 6 }, lenses: [], settings: true },
   { name: "phone-google-map", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15.4 }, lenses: ["parking"], google: true, layers: true },
   { name: "phone-google-parking", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15.4 }, lenses: ["parking"], google: true, healthy: true },
@@ -244,6 +257,11 @@ for (const s of shots) {
     if (!(await page.$(".drop-pin .pin-callout"))) errors.push(`${s.name}: no pin after tapping the map`);
     if (await page.evaluate(() => !!document.body.dataset.sheet)) errors.push(`${s.name}: a card opened before the pin was tapped`);
     if (!s.pinOnly) await page.click(".drop-pin .pin-callout");
+  }
+  if (s.camera) {
+    await page.waitForFunction(() => /香港/.test(document.querySelector("#strip .strip-status")?.textContent ?? ""), null, { timeout: 15000 }).catch(() => {});
+    await page.mouse.click(s.w / 2, s.h / 2);
+    await page.waitForTimeout(1500);
   }
   if (s.chip) await page.click(`[data-chip="${s.chip}"]`);
   if (s.settings) await page.click("#openSettings");
@@ -315,6 +333,15 @@ for (const s of shots) {
   if (s.google) {
     const state = await page.evaluate(() => ({ basemap: document.body.dataset.basemap, copyright: document.querySelector(".gbrand .gcopy")?.textContent, toast: document.getElementById("toast")?.textContent }));
     if (state.basemap !== "google" || !state.copyright) errors.push(`${s.name}: Google map not shown ${JSON.stringify(state)}`);
+  }
+  if (s.camera) {
+    const state = await page.evaluate(() => ({
+      kind: document.body.dataset.sheet ?? "",
+      title: document.getElementById("sheetTitle")?.textContent ?? "",
+      image: document.getElementById("camImg")?.naturalWidth ?? 0,
+      status: document.querySelector("#strip .strip-status")?.textContent ?? "",
+    }));
+    if (state.kind !== "camera" || state.title !== s.camera || !state.image || !/香港官方鏡頭/.test(state.status)) errors.push(`${s.name}: camera sheet ${JSON.stringify(state)}`);
   }
   if (s.share) {
     const title = (await page.textContent("#sheetTitle").catch(() => "")) ?? "";

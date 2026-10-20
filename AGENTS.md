@@ -21,6 +21,10 @@
 - `src/data/google.ts`：Google 地點搜尋。站長金鑰在建置時由 `GOOGLE_MAPS_KEY` secret 注入
   （`VITE_GOOGLE_MAPS_KEY`，瀏覽器金鑰，必須限制網址）；使用者也可在設定填自己的（優先使用）
 - `worker/camera.ts` + `/api/cam`：只限 `*.gov.tw` 的 http 影像串流轉接（https 頁面不能載入 http 影像）
+- `src/data/worldcams.ts`：國外官方道路影像（17 個地區＋要站長金鑰的 Windy、511），地圖看到該地區才讀清單；
+  解析器都是純函式（`tests/world.test.ts`）。新增來源前先用 CI 實測清單與影像網址（`scripts/live-probe.mjs` 的 Cams 列）
+- `src/data/osmparking.ts`：台灣停車目錄以外的停車場，直接用底圖向量圖磚的 `poi`／`class=parking`（`pk-osm` 圖層），
+  點開才用 OSM API 讀標籤；Overpass 公共伺服器常常滿載，不要當主要來源
 - `src/ui/locate.ts`：定位藍點、精度圈、指南針扇形（iOS 要在點擊當下要求方向權限）
 - `src/ui/track.ts`：點選追蹤（鏡頭跟隨、軌跡、駕駛艙視角、目標面板）；`src/ui/detect.ts`：偵測框 HUD（canvas）
 - `src/data/passes.ts`：衛星過境與肉眼可見判斷（太陽位置、地球陰影）、行事曆檔；`src/data/launches.ts`：火箭發射
@@ -62,6 +66,10 @@
    公車每分鐘更新一次。新增 TDX 功能前先算每分鐘會多用幾次。
 11. **航班**：只有 adsb.lol 偶爾接受 Cloudflare；轉送有 `staleTtl`（來源拒絕時回最後一份好資料，標頭 `x-relay-cache: STALE`）。
    App 用每架飛機的資料時間（`at`）推算位置，最多 `DEAD_RECKON_S` 秒，之後變淡並標示，不要假裝是即時位置。
+
+12. **站長金鑰（攝影機）**：`WINDY_WEBCAMS_KEY`、`ON511_KEY`、`AB511_KEY`、`NY511_KEY` 是 GitHub secrets，部署時
+   寫成 Worker secrets（`deploy.yml`），轉送依 `RelayRule.siteKey` 加在送出的請求上；網頁、快取鍵、記錄都不能出現金鑰。
+   沒設金鑰時轉送回 501，App 安靜地不顯示該來源。國外影像只接政府或網站正式公開的鏡頭，不接私人或被破解的監視器。
 
 ## 部署
 

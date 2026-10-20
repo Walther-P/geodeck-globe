@@ -358,6 +358,16 @@ export interface Camera {
   mirror?: string | null;
   page: string | null;
   source: string;
+  /** Seconds between reloads when `image` is a still; without it `image` is a live stream. */
+  refreshS?: number;
+  /** HLS video, for browsers that play it natively (Safari, iPhone). */
+  video?: string | null;
+  /** A short recorded clip (mp4). */
+  clip?: string | null;
+  /** Other directions from the same pole. */
+  views?: Array<{ label: string; image: string }>;
+  /** For feeds whose image URL changes every frame: the newest one. */
+  latest?: () => Promise<string | null>;
 }
 
 /**
