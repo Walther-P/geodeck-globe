@@ -340,7 +340,11 @@ const now = new NowBar(
 
 const search = setupSearch({
   map,
-  choose: (p) => showPlace(p),
+  // A search result gets the red pin first; tapping its callout opens the place card.
+  choose: (p) => {
+    sheet.close();
+    pin.drop(p);
+  },
   openSettings: (section) => ctx.openSettings(section),
   useGoogleMap: () => basemap.set({ ...basemap.choice(), base: "g-road" }),
 });

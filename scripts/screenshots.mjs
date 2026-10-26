@@ -293,6 +293,13 @@ for (const s of shots) {
   if (s.share) {
     await page.fill("#search", s.share);
     await page.press("#search", "Enter");
+    // A search result gets the red pin first and no card; the pin's callout opens the card.
+    await page.waitForSelector(".drop-pin .pin-callout", { timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(2200);
+    const first = await page.evaluate(() => ({ pin: document.querySelector(".drop-pin .pin-callout b")?.textContent ?? "", sheet: document.body.dataset.sheet ?? "" }));
+    if (first.pin !== "赤崁樓" || first.sheet) errors.push(`${s.name}: search should drop a pin titled 赤崁樓 before any card ${JSON.stringify(first)}`);
+    await page.screenshot({ path: `${out}${s.name}-pin.png` });
+    await page.click(".drop-pin .pin-callout").catch(() => {});
   }
   await page.waitForTimeout(2500);
   await page.screenshot({ path: `${out}${s.name}.png` });

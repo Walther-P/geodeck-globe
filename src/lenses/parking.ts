@@ -14,7 +14,7 @@ import { escapeHtml as esc, formatCoord, safeUrl } from "../lib/util";
 import { EMPTY, addLayers, hideLayers, setData } from "../map/globe";
 import { every, viewBounds, type AppContext, type Chip, type Lens } from "./lens";
 
-const LAYERS = ["pk-cluster", "pk-cluster-count", "pk-dot", "pk-sign", "pk-summary", "pk-summary-label", "pk-osm"];
+const LAYERS = ["pk-cluster", "pk-cluster-count", "pk-dot", "pk-sign", "pk-summary", "pk-summary-label", "pk-osm", "pk-osm-name"];
 
 export class ParkingLens implements Lens {
   id = "parking" as const;
@@ -73,15 +73,16 @@ export class ParkingLens implements Lens {
 
   renderExtra(el: HTMLElement): void {
     if (this.world) {
-      el.innerHTML = `<p class="legend"><span class="lg-lot">P</span>停車場（OpenStreetMap 全球資料）· 點開看收費、營業時間與總車位；台灣以外沒有即時格數</p>`;
+      el.innerHTML = `<p class="legend"><span class="lg-lot">P</span>停車場（OpenStreetMap 全球資料）<b class="lg-old">?</b>沒有即時格數 · 點開看收費、營業時間與總車位</p>`;
       return;
     }
-    el.innerHTML = `<p class="legend"><span class="lg-lot">P</span>停車場 <span class="lg-curb">路</span>路邊 <b class="lg-ok">12</b>剩餘格數 <b class="lg-low">3</b>快滿 <b class="lg-full">滿</b> <b class="lg-old">?</b>資料超過 5 分鐘</p>`;
+    el.innerHTML = `<p class="legend"><span class="lg-lot">P</span>停車場 <span class="lg-curb">路</span>路邊 <b class="lg-ok">12</b>剩餘格數 <b class="lg-low">3</b>快滿 <b class="lg-full">滿</b> <b class="lg-old">?</b>沒有即時資料或超過 5 分鐘</p>`;
   }
 
   activate(): void {
     this.active = true;
-    setData(this.ctx.map, "pk", EMPTY, { radius: 46, maxZoom: 14 });
+    // Individual signs (with their counts) from street level, zoom 13 up.
+    setData(this.ctx.map, "pk", EMPTY, { radius: 40, maxZoom: 12 });
     setData(this.ctx.map, "pk-summary", EMPTY);
     this.ctx.map.on("moveend", this.onMove);
     void this.refresh();
@@ -154,7 +155,8 @@ export class ParkingLens implements Lens {
     const features: GeoJSON.Feature[] = [];
     for (const p of merged.catalog) {
       if (p.kind === "lot" ? !this.on.lots : !this.on.curb) continue;
-      features.push(feature(p.id, p.lng, p.lat, { kind: p.kind, count: "", state: "none", available: -1 }));
+      // Every sign carries a count; "?" when nothing live says how many are free.
+      features.push(feature(p.id, p.lng, p.lat, { kind: p.kind, count: "?", state: "none", available: -1 }));
     }
     for (const l of merged.live) {
       if (l.kind === "lot" ? !this.on.lots : !this.on.curb) continue;
@@ -254,7 +256,26 @@ export class ParkingLens implements Lens {
           "icon-image": "p-lot",
           "icon-size": ["interpolate", ["linear"], ["zoom"], 14, 0.6, 17, 0.9],
           "icon-padding": 1,
-          "text-field": ["step", ["zoom"], "", 16, ["coalesce", ["get", "name:zh-Hant"], ["get", "name"], ""]],
+          // No live counts abroad: the sign says so, like a stale one at home.
+          "text-field": "?",
+          "text-font": ["Noto Sans Bold"],
+          "text-size": ["interpolate", ["linear"], ["zoom"], 14, 12, 17, 14],
+          "text-anchor": "left",
+          "text-offset": [0.95, 0],
+          "text-allow-overlap": true,
+        },
+        paint: { "text-color": "#94a3b8", "text-halo-color": "#04080d", "text-halo-width": 2 },
+      });
+    if (map.getSource("omt") && !map.getLayer("pk-osm-name"))
+      map.addLayer({
+        id: "pk-osm-name",
+        type: "symbol",
+        source: "omt",
+        "source-layer": "poi",
+        minzoom: 16,
+        filter: ["==", ["get", "class"], "parking"],
+        layout: {
+          "text-field": ["coalesce", ["get", "name:zh-Hant"], ["get", "name"], ""],
           "text-font": ["Noto Sans Regular"],
           "text-size": 10.5,
           "text-anchor": "top",
@@ -264,7 +285,7 @@ export class ParkingLens implements Lens {
         },
         paint: { "text-color": "#93c5fd", "text-halo-color": "#04080d", "text-halo-width": 1.2 },
       });
-    if (map.getLayer("pk-osm")) map.setLayoutProperty("pk-osm", "visibility", this.world && this.on.lots ? "visible" : "none");
+    for (const id of ["pk-osm", "pk-osm-name"]) if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", this.world && this.on.lots ? "visible" : "none");
     addLayers(this.ctx.map, [
       {
         id: "pk-summary",
@@ -330,7 +351,8 @@ export class ParkingLens implements Lens {
           "text-size": ["interpolate", ["linear"], ["zoom"], 12, 12, 16, 14],
           "text-anchor": "left",
           "text-offset": [0.95, 0],
-          "text-optional": true,
+          // The count belongs to its sign: never dropped to make room.
+          "text-allow-overlap": true,
         },
         paint: {
           "text-color": [
