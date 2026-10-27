@@ -65,7 +65,8 @@ export class TrafficLens implements Lens {
   renderExtra(el: HTMLElement): void {
     const wedge = (dashed: boolean) =>
       `<svg class="lg-fan" viewBox="0 0 20 16" aria-hidden="true"><path d="M10 15 L3.6 3.4 A13 13 0 0 1 16.4 3.4 Z" fill="rgba(125,211,252,${dashed ? 0.18 : 0.38})" stroke="#7dd3fc" stroke-width="1.2"${dashed ? ' stroke-dasharray="2.5 2"' : ""}/></svg>`;
-    el.innerHTML = this.on.cameras ? `<p class="legend">${wedge(false)}鏡頭朝向 ${wedge(true)}國道監看的車道方向 · 放大到街道顯示</p>` : "";
+    // Each icon stays on the same line as its words.
+    el.innerHTML = this.on.cameras ? `<p class="legend"><span>${wedge(false)}鏡頭朝向</span><span>${wedge(true)}國道監看的車道方向</span><span>放大到街道顯示</span></p>` : "";
   }
 
   chips(): Chip[] {
