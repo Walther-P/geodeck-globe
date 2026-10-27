@@ -25,19 +25,17 @@ async function show(name, url, { init = {}, raw = 900, gz = false } = {}) {
   }
 }
 
-const tp = await show("taipei allavailable json", "https://tcgbusfs.blob.core.windows.net/blobtcmsv/TCMSV_allavailable.json", { raw: 200 });
-if (tp?.data) console.log("taipei top keys", Object.keys(tp.data), "UPDATETIME", tp.data.UPDATETIME, "known", tp.data.park.filter((p) => p.availablecar >= 0).length, "/", tp.data.park.length);
-const r = await fetch("https://tcgbusfs.blob.core.windows.net/blobtcmsv/TCMSV_allavailable.json", { method: "HEAD", headers: { origin: ORIGIN } });
-console.log("taipei last-modified", r.headers.get("last-modified"), "acao", r.headers.get("access-control-allow-origin"), "cache", r.headers.get("cache-control"));
-const tc = await show("taichung opendata", "https://motoretag.taichung.gov.tw/DataAPI/api/ParkingAPIV2/Opendata", { raw: 900 });
-if (Array.isArray(tc)) console.log("taichung opendata n", tc.length, "keys", Object.keys(tc[0] ?? {}));
-const tcs = await show("taichung spotlist", "https://motoretag.taichung.gov.tw/DataAPI/api/ParkingSpotListAPIV2", { raw: 100 });
+
+const gz = await show("taipei allavailable gz", "https://tcgbusfs.blob.core.windows.net/blobtcmsv/TCMSV_allavailable.gz", { raw: 100 });
+if (gz?.data) console.log("taipei gz UPDATETIME", gz.data.UPDATETIME, "n", gz.data.park?.length, "known", gz.data.park?.filter((p) => p.availablecar >= 0).length);
+const m = await show("meta 128435", "https://data.gov.tw/api/v2/rest/dataset/128435", { raw: 50 });
+for (const d of m?.result?.distribution ?? []) console.log("128435", d.resourceDescription, d.resourceFormat, d.resourceDownloadUrl);
+const ty = await show("taoyuan download", "https://opendata.tycg.gov.tw/api/dataset/f4cc0b12-86ac-40f9-8745-885bddc18f79/resource/0daad6e6-0632-44f5-bd25-5e1de1e9146f/download", { raw: 1200 });
+const tyj = await show("taoyuan download json", "https://opendata.tycg.gov.tw/api/dataset/f4cc0b12-86ac-40f9-8745-885bddc18f79/resource/0daad6e6-0632-44f5-bd25-5e1de1e9146f/download?format=json", { raw: 1200 });
+await show("taoyuan v1 rest", "https://opendata.tycg.gov.tw/api/v1/rest/datastore/0daad6e6-0632-44f5-bd25-5e1de1e9146f?format=json&limit=2", { raw: 1200 });
+const tcs = await show("taichung spotlist", "https://motoretag.taichung.gov.tw/DataAPI/api/ParkingSpotListAPIV2", { raw: 50 });
 if (Array.isArray(tcs)) {
   const lots = tcs.flatMap((g) => g.ParkingLots ?? []);
-  console.log("taichung spotlist lots", lots.length, "keys", Object.keys(lots[0] ?? {}), "groups", Object.keys(tcs[0] ?? {}));
+  console.log("taichung lots", lots.length, "sample", JSON.stringify(lots.slice(0, 2).map(({ Notes, EnNotes, ...x }) => x)));
+  console.log("taichung updatetimes", JSON.stringify([...new Set(lots.map((l) => l.Updatetime))].slice(0, 6)));
 }
-for (const id of ["25940", "83931"]) {
-  const m = await show(`meta ${id}`, `https://data.gov.tw/api/v2/rest/dataset/${id}`, { raw: 50 });
-  for (const d of m?.result?.distribution ?? []) console.log(id, d.resourceDescription, d.resourceFormat, d.resourceDownloadUrl, d.resourceAccessUrl);
-}
-await show("tainan parkweb", "https://parkweb.tainan.gov.tw/api/parking.php", { raw: 120 });
