@@ -26,16 +26,9 @@ async function show(name, url, { init = {}, raw = 900, gz = false } = {}) {
 }
 
 
-const gz = await show("taipei allavailable gz", "https://tcgbusfs.blob.core.windows.net/blobtcmsv/TCMSV_allavailable.gz", { raw: 100 });
-if (gz?.data) console.log("taipei gz UPDATETIME", gz.data.UPDATETIME, "n", gz.data.park?.length, "known", gz.data.park?.filter((p) => p.availablecar >= 0).length);
-const m = await show("meta 128435", "https://data.gov.tw/api/v2/rest/dataset/128435", { raw: 50 });
-for (const d of m?.result?.distribution ?? []) console.log("128435", d.resourceDescription, d.resourceFormat, d.resourceDownloadUrl);
-const ty = await show("taoyuan download", "https://opendata.tycg.gov.tw/api/dataset/f4cc0b12-86ac-40f9-8745-885bddc18f79/resource/0daad6e6-0632-44f5-bd25-5e1de1e9146f/download", { raw: 1200 });
-const tyj = await show("taoyuan download json", "https://opendata.tycg.gov.tw/api/dataset/f4cc0b12-86ac-40f9-8745-885bddc18f79/resource/0daad6e6-0632-44f5-bd25-5e1de1e9146f/download?format=json", { raw: 1200 });
-await show("taoyuan v1 rest", "https://opendata.tycg.gov.tw/api/v1/rest/datastore/0daad6e6-0632-44f5-bd25-5e1de1e9146f?format=json&limit=2", { raw: 1200 });
-const tcs = await show("taichung spotlist", "https://motoretag.taichung.gov.tw/DataAPI/api/ParkingSpotListAPIV2", { raw: 50 });
-if (Array.isArray(tcs)) {
-  const lots = tcs.flatMap((g) => g.ParkingLots ?? []);
-  console.log("taichung lots", lots.length, "sample", JSON.stringify(lots.slice(0, 2).map(({ Notes, EnNotes, ...x }) => x)));
-  console.log("taichung updatetimes", JSON.stringify([...new Set(lots.map((l) => l.Updatetime))].slice(0, 6)));
-}
+
+const x = await show("taipei allavailable xml", "https://tcgbusfs.blob.core.windows.net/blobtcmsv/TCMSV_allavailable.xml", { raw: 1500 });
+if (typeof x === "string") console.log("taipei xml length", x.length, "records", (x.match(/<id>/gi) ?? []).length, "tail", x.slice(-300).replace(/\s+/g, " "));
+const r = await fetch("https://tcgbusfs.blob.core.windows.net/blobtcmsv/TCMSV_allavailable.xml", { method: "HEAD", headers: { origin: ORIGIN } });
+console.log("taipei xml last-modified", r.headers.get("last-modified"), "acao", r.headers.get("access-control-allow-origin"));
+const c = await show("taipei cms xml", "https://tcgbusfs.blob.core.windows.net/blobtcmsv/TCMSV_allCMSavailable.xml", { raw: 600 });
