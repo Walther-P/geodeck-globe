@@ -1,6 +1,7 @@
-// 交通：road cameras, speed-enforcement points, live buses.
+// 交通：road cameras, speed-enforcement points, live buses, bike share docks.
 
 import type { MapGeoJSONFeature } from "maplibre-gl";
+import { bikeCount, bikeNetworks, networksNear, networkStations, type BikeNetwork, type BikeStation } from "../data/bikes";
 import { hasTdx } from "../data/keys";
 import { bundledCameras, enforcementPoints, type EnforcementPoint } from "../data/roads";
 import { citiesAt } from "../data/taiwan";
@@ -8,16 +9,18 @@ import { buses, cameraSrc, cctv, type Bus, type Camera } from "../data/tdx";
 import { CAM_SOURCES, hlsNative, windyNear } from "../data/worldcams";
 import { FeedError } from "../lib/net";
 import { ago } from "../lib/time";
-import { boundsOverlap, distance, escapeHtml as esc, safeUrl } from "../lib/util";
+import { boundsOverlap, distance, escapeHtml as esc, inBounds, safeUrl } from "../lib/util";
 import { EMPTY, addLayers, hideLayers, points, setData } from "../map/globe";
 import { every, viewBounds, type AppContext, type Chip, type Lens } from "./lens";
 
-const LAYERS = ["tr-cam-cluster", "tr-cam-count", "tr-cam", "tr-speed", "tr-speed-label", "tr-bus", "tr-bus-label"];
+const LAYERS = ["tr-cam-cluster", "tr-cam-count", "tr-cam", "tr-speed", "tr-speed-label", "tr-bus", "tr-bus-label", "tr-bike", "tr-bike-count"];
+/** Docks from street level up: a city has hundreds to thousands. */
+const BIKE_MIN_ZOOM = 14;
 
 export class TrafficLens implements Lens {
   id = "traffic" as const;
   title = "交通";
-  private on = { cameras: true, speed: true, buses: false };
+  private on = { cameras: true, speed: true, buses: false, bikes: true };
   private cams = new Map<string, Camera>();
   private camNote = "";
   private tdxCamScopes = new Set<string>();
@@ -30,7 +33,10 @@ export class TrafficLens implements Lens {
   private speed: EnforcementPoint[] = [];
   private busRows: Bus[] = [];
   private busCity = "";
-  private notes = { cameras: "", speed: "", buses: "" };
+  private bikeRows: BikeStation[] = [];
+  private bikeNets = new Map<string, BikeNetwork>();
+  private bikeSeq = 0;
+  private notes = { cameras: "", speed: "", buses: "", bikes: "" };
   private stops: Array<() => void> = [];
   private active = false;
   private moveTimer = 0;
@@ -40,6 +46,7 @@ export class TrafficLens implements Lens {
       void this.loadTdxCameras();
       void this.loadWorldCameras();
       void this.loadBuses();
+      void this.loadBikes();
     }, 700);
   };
 
@@ -51,6 +58,7 @@ export class TrafficLens implements Lens {
     });
     ctx.onFeatureTap(["tr-speed"], (f) => this.showSpeed(f));
     ctx.onFeatureTap(["tr-bus"], (f) => this.showBus(f));
+    ctx.onFeatureTap(["tr-bike"], (f) => this.showBike(String(f.properties.id)));
   }
 
   chips(): Chip[] {
@@ -58,6 +66,7 @@ export class TrafficLens implements Lens {
       { id: "cameras", label: "即時影像", on: this.on.cameras },
       { id: "speed", label: "測速點", on: this.on.speed },
       { id: "buses", label: "公車動態", on: this.on.buses, needs: "tdx" },
+      { id: "bikes", label: "YouBike／單車", on: this.on.bikes },
     ];
   }
 
@@ -72,18 +81,22 @@ export class TrafficLens implements Lens {
     if (key === "cameras") this.on.cameras ? void this.loadCameras() : hideLayers(this.ctx.map, ["tr-cam-cluster", "tr-cam-count", "tr-cam"]);
     if (key === "speed") this.on.speed ? void this.loadSpeed() : hideLayers(this.ctx.map, ["tr-speed", "tr-speed-label"]);
     if (key === "buses") this.on.buses ? void this.loadBuses() : (setData(this.ctx.map, "tr-buses", EMPTY), (this.notes.buses = ""));
+    if (key === "bikes") this.on.bikes ? void this.loadBikes() : (setData(this.ctx.map, "tr-bikes", EMPTY), (this.notes.bikes = ""));
     this.report();
   }
 
   activate(): void {
     this.active = true;
     setData(this.ctx.map, "tr-buses", EMPTY);
+    setData(this.ctx.map, "tr-bikes", EMPTY);
     this.ctx.map.on("moveend", this.onMove);
     if (this.on.cameras) void this.loadCameras();
     if (this.on.speed) void this.loadSpeed();
     if (this.on.buses) void this.loadBuses();
+    if (this.on.bikes) void this.loadBikes();
     // Once a minute: a free TDX key only has about five calls a minute for everything.
     this.stops.push(every(60000, () => void this.loadBuses()));
+    this.stops.push(every(60000, () => void this.loadBikes(true)));
     this.report();
   }
 
@@ -96,7 +109,7 @@ export class TrafficLens implements Lens {
   }
 
   private report(): void {
-    const parts = [this.on.cameras && this.notes.cameras, this.on.speed && this.notes.speed, this.on.buses && this.notes.buses].filter(Boolean);
+    const parts = [this.on.cameras && this.notes.cameras, this.on.speed && this.notes.speed, this.on.buses && this.notes.buses, this.on.bikes && this.notes.bikes].filter(Boolean);
     this.ctx.status("traffic", parts.join(" · ") || "選擇要顯示的項目");
   }
 
@@ -465,4 +478,100 @@ export class TrafficLens implements Lens {
       <p class="micro">資料：TDX ${esc(this.busCity)}公車動態（用你自己的金鑰取得）。每 20 秒更新。</p>`,
     );
   }
+
+  // ---- Bike share (CityBikes) ---------------------------------------------
+
+  private async loadBikes(force = false): Promise<void> {
+    if (!this.active || !this.on.bikes) return;
+    const map = this.ctx.map;
+    const seq = ++this.bikeSeq;
+    if (map.getZoom() < BIKE_MIN_ZOOM) {
+      setData(map, "tr-bikes", EMPTY);
+      this.notes.bikes = "YouBike／共享單車：放大到街道才顯示";
+      this.report();
+      return;
+    }
+    const view = viewBounds(map);
+    try {
+      const near = networksNear(await bikeNetworks(), view);
+      if (seq !== this.bikeSeq) return;
+      if (!near.length) {
+        setData(map, "tr-bikes", EMPTY);
+        this.notes.bikes = "這附近沒有 CityBikes 收錄的共享單車";
+        this.report();
+        return;
+      }
+      for (const n of near) this.bikeNets.set(n.id, n);
+      const lists = await Promise.allSettled(near.map((n) => networkStations(n.id, force)));
+      if (seq !== this.bikeSeq) return;
+      this.bikeRows = lists.flatMap((r) => (r.status === "fulfilled" ? r.value : [])).filter((s) => inBounds(s, view));
+      const now = Date.now();
+      setData(
+        map,
+        "tr-bikes",
+        points(this.bikeRows, (s) => {
+          const c = bikeCount(s, now);
+          return { id: s.id, count: c.label, state: c.state };
+        }),
+      );
+      addLayers(map, [
+        {
+          id: "tr-bike",
+          type: "symbol",
+          source: "tr-bikes",
+          layout: { "icon-image": "bike", "icon-size": 0.8, "icon-allow-overlap": true },
+        },
+        {
+          id: "tr-bike-count",
+          type: "symbol",
+          source: "tr-bikes",
+          layout: {
+            "text-field": ["get", "count"],
+            "text-font": ["Noto Sans Bold"],
+            "text-size": 11,
+            "text-offset": [0, 1.25],
+            "text-allow-overlap": true,
+          },
+          paint: {
+            "text-color": ["match", ["get", "state"], "ok", "#fde68a", "low", "#fbbf24", "empty", "#f87171", "#94a3b8"],
+            "text-halo-color": "#04080d",
+            "text-halo-width": 1.6,
+          },
+        },
+      ]);
+      const failed = lists.filter((r) => r.status === "rejected").length;
+      const names = [...new Set(near.map((n) => n.name))].join("、");
+      this.notes.bikes = `${names}：畫面中 ${this.bikeRows.length} 站${failed ? `（${failed} 個系統暫時讀不到）` : ""}`;
+    } catch (e) {
+      this.notes.bikes = `共享單車：${(e as Error).message}`;
+    }
+    this.report();
+  }
+
+  private showBike(id: string): void {
+    const s = this.bikeRows.find((x) => x.id === id);
+    if (!s) return;
+    const net = this.bikeNets.get(s.network);
+    const c = bikeCount(s);
+    const fresh = c.state !== "old" && c.state !== "none";
+    const val = (v: number | null) => (fresh && v !== null ? String(v) : "?");
+    const body = this.ctx.sheet.open(
+      "bike",
+      "BIKE SHARE",
+      s.name || "單車站",
+      `<div class="stat-row">
+        <div class="stat"><b>${val(s.bikes)}</b><small>可借${s.ebikes !== null && fresh ? `（電輔 ${s.ebikes}）` : ""}</small></div>
+        <div class="stat"><b>${val(s.docks)}</b><small>可還空位</small></div>
+        <div class="stat"><b>${esc(ago(s.updatedAt))}</b><small>更新</small></div>
+      </div>
+      ${!s.online ? `<p class="muted">此站目前暫停服務</p>` : ""}
+      ${!fresh ? `<p class="muted">${c.state === "none" ? "這個系統沒有提供車輛數" : "資料超過 15 分鐘，數字暫不採用"}</p>` : ""}
+      ${s.slots ? `<p>總車位：${s.slots}</p>` : ""}
+      ${s.address ? `<p>地址：${esc(s.address)}</p>` : ""}
+      <p class="micro">資料：<a href="https://citybik.es/" target="_blank" rel="noopener">CityBikes</a>（${esc(net?.name ?? s.network)}${net?.city ? `，${esc(net.city)}` : ""}），每分鐘更新。實際車況以現場為準。</p>
+      <div class="actions"><button class="btn primary" id="bikeGo">導航到這裡</button></div>`,
+    );
+    body.querySelector("#bikeGo")?.addEventListener("click", () => this.ctx.openPlace({ lat: s.lat, lng: s.lng, title: s.name || "單車站" }, "walk"));
+  }
 }
+

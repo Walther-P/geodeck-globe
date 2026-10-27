@@ -2,6 +2,7 @@
 // from the basemap's own vector tiles (OpenFreeMap), so it costs nothing
 // extra; tapping one reads its capacity, fee and hours from the OpenStreetMap
 // API. There are no live counts; at home the Taiwan catalog and TDX have them.
+// EV charging points come the same way (tiles for where, the API for sockets).
 
 import { getJson } from "../lib/net";
 import { num } from "../lib/util";
@@ -91,24 +92,100 @@ export function describeParking(tags: Record<string, string>): ParkingDetails {
   };
 }
 
-const details = new Map<string, Promise<ParkingDetails | null>>();
+const tags = new Map<string, Promise<Record<string, string> | null>>();
 
-/** One object's tags from the OpenStreetMap API; null when it is gone or not parking. */
-export function parkingDetails(ref: OsmRef): Promise<ParkingDetails | null> {
+/** One object's tags from the OpenStreetMap API; null when it is gone. */
+function osmTags(ref: OsmRef): Promise<Record<string, string> | null> {
   const key = `${ref.type}/${ref.id}`;
-  if (!details.has(key))
-    details.set(
+  if (!tags.has(key))
+    tags.set(
       key,
       getJson<{ elements?: Array<{ tags?: Record<string, string> }> }>(`https://api.openstreetmap.org/api/0.6/${key}.json`, { timeout: 10000 }).then(
-        (d) => {
-          const tags = d.elements?.[0]?.tags;
-          return tags?.amenity === "parking" ? describeParking(tags) : null;
-        },
+        (d) => d.elements?.[0]?.tags ?? null,
         (e) => {
-          details.delete(key);
+          tags.delete(key);
           throw e;
         },
       ),
     );
-  return details.get(key)!;
+  return tags.get(key)!;
+}
+
+/** Null when the object is gone or no longer parking. */
+export async function parkingDetails(ref: OsmRef): Promise<ParkingDetails | null> {
+  const t = await osmTags(ref);
+  return t?.amenity === "parking" ? describeParking(t) : null;
+}
+
+// ---- EV charging -----------------------------------------------------------
+
+export interface ChargerDetails {
+  name: string;
+  operator: string;
+  closed: boolean;
+  /** Vehicles that can charge at once. */
+  capacity: number | null;
+  sockets: Array<{ label: string; count: number | null; output: string }>;
+  rate: string | null;
+  hours: string | null;
+  address: string;
+  notes: string[];
+}
+
+const SOCKETS: Record<string, string> = {
+  type2_combo: "CCS2",
+  type1_combo: "CCS1",
+  chademo: "CHAdeMO",
+  type2: "Type 2（交流）",
+  type2_cable: "Type 2 附線（交流）",
+  type1: "Type 1／J1772（交流）",
+  tesla_supercharger: "Tesla 超充",
+  tesla_supercharger_ccs: "Tesla 超充（CCS）",
+  tesla_destination: "Tesla 目的地充電",
+  nacs: "NACS（Tesla）",
+  gb_dc: "GB/T 直流",
+  gb_ac: "GB/T 交流",
+  schuko: "家用插座（Schuko）",
+  typee: "家用插座（Type E）",
+  bs1363: "家用插座（英規）",
+  cee_blue: "CEE 藍色插座",
+  type3c: "Type 3C",
+};
+
+export function describeCharger(t: Record<string, string>): ChargerDetails {
+  const sockets = Object.keys(t)
+    .map((k) => k.match(/^socket:([a-z0-9_]+)$/)?.[1])
+    .filter((k): k is string => !!k && t[`socket:${k}`] !== "no")
+    .map((k) => ({ label: SOCKETS[k] ?? k, count: num(t[`socket:${k}`]), output: t[`socket:${k}:output`]?.trim() ?? "" }));
+  const two = ["motorcycle", "scooter", "bicycle"].filter((v) => t[v] === "yes");
+  const notes = [
+    two.length && t.motorcar !== "yes" ? `供${two.map((v) => (v === "bicycle" ? "自行車" : "機車")).filter((x, i, a) => a.indexOf(x) === i).join("、")}使用` : null,
+    t.authentication && t.authentication !== "none" ? `認證：${t.authentication}` : null,
+    Object.keys(t).some((k) => k.startsWith("authentication:") && t[k] === "yes")
+      ? `認證方式：${Object.keys(t)
+          .filter((k) => k.startsWith("authentication:") && t[k] === "yes")
+          .map((k) => k.slice(15))
+          .join("、")}`
+      : null,
+    t["parking:fee"] === "yes" ? "另需停車費" : null,
+    ACCESS_NOTES[t.access],
+  ].filter((x): x is string => !!x);
+  const h = t.opening_hours?.trim();
+  return {
+    name: osmName(t) || t.brand || t.operator || "充電站",
+    operator: [t.operator, t.network, t.brand].find((x) => x?.trim())?.trim() ?? "",
+    closed: ["private", "no"].includes(t.access),
+    capacity: num(t.capacity),
+    sockets,
+    rate: fee(t),
+    hours: h ? (h === "24/7" ? "24 小時" : h) : null,
+    address: t["addr:full"] || [t["addr:city"], t["addr:street"], t["addr:housenumber"]].filter(Boolean).join(" "),
+    notes,
+  };
+}
+
+/** Null when the object is gone or no longer a charging station. */
+export async function chargerDetails(ref: OsmRef): Promise<ChargerDetails | null> {
+  const t = await osmTags(ref);
+  return t?.amenity === "charging_station" ? describeCharger(t) : null;
 }

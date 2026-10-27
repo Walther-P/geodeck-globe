@@ -244,6 +244,22 @@ const results = await page.evaluate(async (keys) => {
   for (const [name, url, check, init] of cams) await probe(name, url, check, init ?? {}, 240);
   // Parking abroad: lots come from the basemap tiles, details from the OSM API on tap.
   await probe("OSM API parking details", "https://api.openstreetmap.org/api/0.6/way/150920360.json", (d) => JSON.stringify(must(d.elements?.[0]?.tags, "tags")));
+  // Keyless live parking the cities publish themselves (the app reads them without TDX).
+  const text = (d) => (typeof d === "string" ? d : JSON.stringify(d));
+  await probe("Park Taipei XML", "https://tcgbusfs.blob.core.windows.net/blobtcmsv/TCMSV_allavailable.xml", (t) => `${(text(t).match(/<PARK>/g) ?? []).length} lots, updated ${must(text(t).match(/<UPDATETIME>([^<]+)/), "UPDATETIME")[1]}`);
+  await probe(
+    "Park Taoyuan XML",
+    "https://opendata.tycg.gov.tw/api/dataset/f4cc0b12-86ac-40f9-8745-885bddc18f79/resource/0daad6e6-0632-44f5-bd25-5e1de1e9146f/download",
+    (t) => `${(text(t).match(/<parkingLot>/g) ?? []).length} lots, updated ${must(text(t).match(/updatetime="([^"]+)"/), "updatetime")[1]}`,
+  );
+  await probe("Park Taichung", "https://motoretag.taichung.gov.tw/DataAPI/api/ParkingSpotListAPIV2", (d) => {
+    const lots = d.flatMap((g) => g.ParkingLots ?? []);
+    return `${lots.length} lots, newest ${lots.map((l) => l.Updatetime ?? "").sort().at(-1)}`;
+  });
+  await probe("Park Tainan", "https://parkweb.tainan.gov.tw/api/parking.php", (d) => `${n(d)} lots, newest ${d.map((l) => l.update_time ?? "").sort().at(-1)}`);
+  // Bike share: CityBikes (YouBike in a dozen Taiwanese cities, ~800 systems worldwide).
+  await probe("Bikes CityBikes networks", "https://api.citybik.es/v2/networks?fields=id,name,location", (d) => `${n(d.networks)} networks, ${d.networks.filter((x) => x.location?.country === "TW").length} in Taiwan`);
+  await probe("Bikes YouBike Taipei", "https://api.citybik.es/v2/networks/youbike-taipei", (d) => `${n(d.network?.stations)} stations, ${d.network?.stations?.[0]?.timestamp}`);
   return rows;
 }, keys);
 
@@ -257,6 +273,9 @@ for (const [name, w, h, view, lenses, tdx, want] of [
   // Abroad: official cameras for the area, and OpenStreetMap parking from the basemap tiles.
   ["live-hongkong", 393, 852, { lng: 114.17, lat: 22.3, zoom: 12 }, ["traffic"], false, ["App: Hong Kong cameras", /香港官方鏡頭/]],
   ["live-tokyo", 393, 852, { lng: 139.7005, lat: 35.6905, zoom: 16 }, ["parking"], false, ["App: Tokyo parking (OSM)", /畫面中 \d+ 處停車場/]],
+  // No key: Taipei's own feed gives the counts; YouBike docks from CityBikes.
+  ["live-taipei", 393, 852, { lng: 121.5168, lat: 25.0466, zoom: 15.5 }, ["parking"], false, ["App: Taipei parking (no key)", /即時：停車場 [1-9]\d*\/\d+/]],
+  ["live-taipei-bikes", 393, 852, { lng: 121.5168, lat: 25.0466, zoom: 15 }, ["traffic"], false, ["App: Taipei YouBike", /YouBike[^·]*畫面中 [1-9]\d* 站/]],
 ]) {
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   const appKeys = tdx && keys.tdxId ? { tdxId: keys.tdxId, tdxSecret: keys.tdxSecret, cwa: "", google: "" } : null;
@@ -300,7 +319,7 @@ for (const [name, w, h, view, lenses, tdx, want] of [
       await p.waitForTimeout(5000);
     }
     const counts = status.match(/停車場 (\d+)\/(\d+)/);
-    results.push({ name: "App: Tainan parking with TDX key", direct: counts && Number(counts[1]) > 0 ? "ok" : "check", relay: "-", note: status.slice(0, 200) });
+    results.push({ name: "App: Tainan parking (city feed, TDX kerbside)", direct: counts && Number(counts[1]) > 0 ? "ok" : "check", relay: "-", note: status.slice(0, 200) });
   }
   await p.screenshot({ path: `${out}${name}.png` });
   await ctx.close();

@@ -23,6 +23,8 @@ export interface RelayRule {
    * answers 501 and the page leaves that source out.
    */
   siteKey?: { env: SiteKeyName; header?: string; param?: string };
+  /** Content type to answer with when the upstream labels its data wrongly. */
+  contentType?: string;
 }
 
 /** Worker secrets the owner may set (GitHub secrets of the same name; see deploy.yml). */
@@ -136,6 +138,29 @@ export const RELAY_RULES: RelayRule[] = [
       ["cam-ny511", "511ny.org", /^\/api\/getcameras$/, "NY511_KEY"],
     ] as const
   ).map(([id, host, path, env]): RelayRule => ({ id, host, path, method: "GET", ttl: 3600, keyed: false, staleTtl: 7 * 86400, siteKey: { env, param: "key" } })),
+  // Live parking that cities publish without a key (src/data/cityparking.ts),
+  // for hosts that do not answer browsers; shared for a minute.
+  {
+    id: "park-taipei",
+    host: "tcgbusfs.blob.core.windows.net",
+    path: /^\/blobtcmsv\/TCMSV_allavailable\.xml$/,
+    method: "GET",
+    ttl: 60,
+    keyed: false,
+    staleTtl: 3600,
+    // Sent as octet-stream; as XML the edge compresses its 670 KB.
+    contentType: "text/xml; charset=utf-8",
+  },
+  {
+    id: "park-taoyuan",
+    host: "opendata.tycg.gov.tw",
+    path: /^\/api\/dataset\/f4cc0b12-86ac-40f9-8745-885bddc18f79\/resource\/0daad6e6-0632-44f5-bd25-5e1de1e9146f\/download$/,
+    method: "GET",
+    ttl: 60,
+    keyed: false,
+    staleTtl: 3600,
+  },
+  { id: "park-tainan", host: "parkweb.tainan.gov.tw", path: /^\/api\/parking\.php$/, method: "GET", ttl: 60, keyed: false, staleTtl: 3600 },
   {
     id: "tdx-token",
     host: "tdx.transportdata.tw",

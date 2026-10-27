@@ -153,6 +153,30 @@ const fixtures = {
       };
     return {};
   },
+  // Tainan's own parking site (keyless counts); TDX above still serves the kerbside segments.
+  "parkweb.tainan.gov.tw": () => {
+    const tw = (minsAgo) => new Date(now - minsAgo * 60000 + 8 * 3600000).toISOString().slice(0, 19).replace("T", " ");
+    return [
+      ["A1", "府前路停車場", 22.9935, 120.2032, 42, 1],
+      ["B2", "中正立體停車場", 22.9905, 120.2068, 6, 2],
+      ["C3", "民生地下停車場", 22.9952, 120.2071, 0, 1],
+      ["D4", "西門停車場", 22.9898, 120.2015, 15, 20],
+    ].map(([code, name, lat, lng, car, age]) => ({ code, name, address: "臺南市中西區", car, car_total: 120, chargeFee: "30元/時", update_time: tw(age), lnglat: `${lat},${lng}` }));
+  },
+  "api.citybik.es": (url) => {
+    const path = new URL(url).pathname;
+    if (path === "/v2/networks") return { networks: [{ id: "youbike-tainan", name: "YouBike", location: { latitude: 22.99, longitude: 120.21, city: "Tainan", country: "TW" } }] };
+    const at = new Date(now - 60000).toISOString().replace("Z", "+00:00Z");
+    return {
+      network: {
+        stations: [
+          ["s1", "赤崁樓站", 22.9975, 120.2028, 8, 4],
+          ["s2", "民生綠園站", 22.9925, 120.2053, 0, 16],
+          ["s3", "孔廟站", 22.9905, 120.2075, 2, 12],
+        ].map(([id, name, latitude, longitude, free_bikes, empty_slots]) => ({ id, name, latitude, longitude, free_bikes, empty_slots, timestamp: at, extra: { slots: 16, ebikes: 1, online: true, address: "臺南市中西區" } })),
+      },
+    };
+  },
   "tile.googleapis.com": (url) => {
     const path = new URL(url).pathname;
     if (path.endsWith("/createSession")) return { session: "demo-session", expiry: String(Math.floor(now / 1000) + 14 * 86400), tileWidth: 256, tileHeight: 256, imageFormat: "png" };
@@ -183,7 +207,9 @@ const shots = [
   { name: "phone-globe", w: 393, h: 852, view: { lng: 121, lat: 23.6, zoom: 1.8 }, lenses: ["sky"] },
   { name: "phone-taiwan-sky", w: 393, h: 852, view: { lng: 121, lat: 23.8, zoom: 6.6 }, lenses: ["weather", "sky"], tap: "now" },
   { name: "phone-tainan-parking", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15.6 }, lenses: ["traffic", "parking"], healthy: true, tdx: true },
-  { name: "phone-tainan-traffic", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15.2 }, lenses: ["parking", "traffic"], healthy: true },
+  { name: "phone-tainan-traffic", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15.2 }, lenses: ["parking", "traffic"], healthy: true, expect: /YouBike：畫面中 3 站/ },
+  // No key at all: Tainan's own feed still gives counts.
+  { name: "phone-tainan-parking-open", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15.6 }, lenses: ["traffic", "parking"], healthy: true, expect: /即時：停車場 3\/4 有最新資料/ },
   { name: "phone-locate", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15 }, lenses: ["parking"], locate: true, pinchUi: true },
   {
     name: "phone-shared-link",

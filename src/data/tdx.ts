@@ -203,7 +203,10 @@ export interface LiveLot {
   address: string;
   fare: string;
   city: string;
-  source: "tdx";
+  /** "tdx" (the visitor's own key) or the city whose open feed this came from. */
+  source: "tdx" | "taipei" | "taoyuan" | "taichung" | "tainan";
+  /** How old a count may be and still be shown; LIVE_MAX_AGE_MS unless the source publishes less often. */
+  maxAgeMs?: number;
 }
 
 interface TdxCarPark {

@@ -11,6 +11,7 @@ import type { AppContext, Lens, LensId, Tone } from "./lenses/lens";
 import { read, write } from "./lib/store";
 import { escapeHtml as esc, formatCoord } from "./lib/util";
 import { Basemap } from "./map/basemap";
+import { MapExtras } from "./map/extras";
 import { addIcons, createGlobe } from "./map/globe";
 import { DetectOverlay } from "./ui/detect";
 import { $, Sheet, toast } from "./ui/dom";
@@ -41,6 +42,7 @@ if (sharedView) {
 const sheet = new Sheet();
 const map = createGlobe($("map"), () => toast("地圖底圖連線失敗，暫時只顯示陸地輪廓；其他資訊仍可使用", 6000));
 const basemap = new Basemap(map, toast);
+const extras = new MapExtras(map, basemap);
 const pin = new DropPin(map, (p) => showPlace(p));
 
 // iOS ignores user-scalable=no: a pinch that starts on the interface or a
@@ -361,7 +363,7 @@ if (sharedText) {
   });
 }
 $("openSettings").addEventListener("click", () => ctx.openSettings());
-$("layers").addEventListener("click", () => openLayers(sheet, basemap, (section) => ctx.openSettings(section)));
+$("layers").addEventListener("click", () => openLayers(sheet, basemap, (section) => ctx.openSettings(section), extras));
 $("openSaved").addEventListener("click", () => openSaved(sheet, toast, (p, intent) => showPlace(p, intent)));
 
 addEventListener("offline", () => toast("目前離線：收藏與已載入的資料仍可查看"));

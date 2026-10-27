@@ -77,6 +77,7 @@ async function relay(request: Request, env: Env, ctx: ExecutionContext): Promise
     const value = upstream.headers.get(name);
     if (value) out.set(name, value);
   }
+  if (rule.contentType && upstream.status === 200) out.set("content-type", rule.contentType);
   if (upstream.status !== 200) {
     const stale = await fromStale();
     if (stale) return stale;

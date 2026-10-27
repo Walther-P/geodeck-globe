@@ -15,8 +15,6 @@ export const PALETTE = {
   industrial: "#11151b",
   water: "#061019",
   waterway: "#0a1b29",
-  building: "#16202a",
-  buildingTop: "#1c2935",
   minor: "#1b252e",
   secondary: "#25313c",
   primary: "#2f3c48",
@@ -167,19 +165,6 @@ export function tacticalStyle(base = "./"): StyleSpecification {
         "source-layer": "boundary",
         filter: ["all", ["<=", ["get", "admin_level"], 2], ["!=", ["get", "maritime"], 1]],
         paint: { "line-color": PALETTE.border, "line-width": ["interpolate", ["linear"], ["zoom"], 1, 0.5, 8, 1.4] },
-      },
-      {
-        id: "building-3d",
-        type: "fill-extrusion",
-        source: "omt",
-        "source-layer": "building",
-        minzoom: 14,
-        paint: {
-          "fill-extrusion-color": ["interpolate", ["linear"], ["get", "render_height"], 0, PALETTE.building, 60, PALETTE.buildingTop, 200, "#22374a"],
-          "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"], 14, 0, 15, ["coalesce", ["get", "render_height"], 6]],
-          "fill-extrusion-base": ["coalesce", ["get", "render_min_height"], 0],
-          "fill-extrusion-opacity": 0.88,
-        },
       },
       {
         id: "road-label",

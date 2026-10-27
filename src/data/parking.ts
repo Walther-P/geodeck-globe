@@ -82,12 +82,13 @@ export interface ParkingStatus {
   text: string;
 }
 
-export function liveStatus(lot: Pick<LiveLot, "available" | "updatedAt" | "full">, now = Date.now()): ParkingStatus {
+export function liveStatus(lot: Pick<LiveLot, "available" | "updatedAt" | "full" | "maxAgeMs">, now = Date.now()): ParkingStatus {
   if (lot.available === null) return { label: "?", state: "none", text: "來源沒有提供剩餘車位" };
-  const f = freshness(lot.updatedAt, LIVE_MAX_AGE_MS, now);
+  const maxAge = lot.maxAgeMs ?? LIVE_MAX_AGE_MS;
+  const f = freshness(lot.updatedAt, maxAge, now);
   if (f === "unknown") return { label: "?", state: "unknown", text: `來源回報 ${lot.available} 格，但沒有資料時間，暫不採用` };
   if (lot.updatedAt! > now + 120000) return { label: "?", state: "unknown", text: "來源時間異常，暫不採用" };
-  if (f === "stale") return { label: "?", state: "stale", text: `資料超過 5 分鐘（上次 ${lot.available} 格），暫不採用` };
+  if (f === "stale") return { label: "?", state: "stale", text: `資料超過 ${Math.round(maxAge / 60000)} 分鐘（上次 ${lot.available} 格），暫不採用` };
   if (lot.available === 0 || lot.full) return { label: "滿", state: "full", text: "目前已滿" };
   return { label: String(lot.available), state: "fresh", text: `即時剩餘 ${lot.available} 格` };
 }

@@ -244,6 +244,59 @@ const ICONS: Record<string, { size: number; draw: Draw }> = {
       g.fill();
     },
   },
+  bike: {
+    size: 24,
+    draw: (g, s) => {
+      g.fillStyle = "#b45309";
+      g.strokeStyle = "#fef3c7";
+      g.lineWidth = 1.5;
+      g.beginPath();
+      g.arc(s / 2, s / 2, s / 2 - 1.5, 0, Math.PI * 2);
+      g.fill();
+      g.stroke();
+      // Two wheels and a frame.
+      g.strokeStyle = "#ffffff";
+      g.lineWidth = 1.4;
+      const y = s * 0.62;
+      const r = s * 0.15;
+      g.beginPath();
+      g.arc(s * 0.3, y, r, 0, Math.PI * 2);
+      g.moveTo(s * 0.7 + r, y);
+      g.arc(s * 0.7, y, r, 0, Math.PI * 2);
+      g.moveTo(s * 0.3, y);
+      g.lineTo(s * 0.45, s * 0.4);
+      g.lineTo(s * 0.62, s * 0.4);
+      g.lineTo(s * 0.7, y);
+      g.moveTo(s * 0.3, y);
+      g.lineTo(s * 0.52, y);
+      g.lineTo(s * 0.62, s * 0.4);
+      g.moveTo(s * 0.42, s * 0.33);
+      g.lineTo(s * 0.5, s * 0.33);
+      g.stroke();
+    },
+  },
+  bolt: {
+    size: 22,
+    draw: (g, s) => {
+      g.fillStyle = "#065f46";
+      g.strokeStyle = "#d1fae5";
+      g.lineWidth = 1.5;
+      g.beginPath();
+      g.roundRect(1.5, 1.5, s - 3, s - 3, 5);
+      g.fill();
+      g.stroke();
+      g.fillStyle = "#fde047";
+      g.beginPath();
+      g.moveTo(s * 0.58, s * 0.14);
+      g.lineTo(s * 0.28, s * 0.56);
+      g.lineTo(s * 0.48, s * 0.56);
+      g.lineTo(s * 0.4, s * 0.88);
+      g.lineTo(s * 0.72, s * 0.44);
+      g.lineTo(s * 0.52, s * 0.44);
+      g.closePath();
+      g.fill();
+    },
+  },
   "p-curb": {
     size: 24,
     draw: (g, s) => {

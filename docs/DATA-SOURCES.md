@@ -16,6 +16,11 @@
 | 火箭發射時程 | [The Space Devs Launch Library 2](https://thespacedevs.com/llapi) | 直連，失敗改轉送（快取 1 小時） | 免費方案每 IP 每小時 15 次 | 每小時 |
 | 衛星軌道 | [CelesTrak](https://celestrak.org) GP 資料，SGP4 推算 | 轉送（快取 4 小時）；建置時另存快照 | CelesTrak 使用條款 | 每日 |
 | 停車目錄 | OpenStreetMap ＋ 臺北、新北、桃園、臺中、臺南開放資料（GeoDeck 0.7 整理，2026-09-27） | 打包在 `public/data/parking/` | ODbL（含 OSM）＋政府資料開放授權條款；見 `public/data/parking/LICENSE.md` | 手動重建 |
+| 即時車位（免金鑰） | 臺北市停車管理工程處 [TCMSV_allavailable.xml](https://data.taipei)、桃園市政府交通局停車場資訊（XML）、臺中市政府交通局 ParkingSpotListAPIV2、臺南市停車場網站 parkweb API | 臺北、桃園、臺南不允許瀏覽器讀取，經轉送（快取 60 秒，來源失敗時回最後一份 1 小時內的資料）；臺中直連。地圖中心在這四市時使用，不需要任何金鑰 | 政府資料開放授權條款第 1 版 | 桃園、臺中 1 至 2 分鐘；臺北每 5 分鐘（檔案晚 2–3 分鐘出現）、臺南各場 4–6 分鐘（2026-10-27 實測），這兩個來源 10 分鐘內的數字才顯示 |
+| 共享單車 | [CityBikes](https://citybik.es)（YouBike 臺北、新北、桃園、新竹、臺中、嘉義、臺南、高雄…與全球約 800 個系統） | 直連（允許瀏覽器讀取）；系統清單每次開啟讀一次，畫面附近最多 3 個系統每分鐘更新 | CityBikes API 條款（需標示 CityBikes）；資料屬各營運商 | 約每分鐘 |
+| 充電站 | OpenStreetMap 的 `amenity=charging_station`，取自底圖向量圖磚（`poi` 圖層 `subclass=charging_station`） | 不另外連線；點開才向 OpenStreetMap API 讀插座類型、數量、功率、收費、營業時間。沒有即時空位 | ODbL（© OpenStreetMap 貢獻者） | 每週（圖磚） |
+| 3D 建築 | OpenFreeMap 向量圖磚的 `building` 圖層（`render_height`） | 底圖本身的圖磚，14 級以上顯示，Google 底圖上也疊加 | ODbL（© OpenStreetMap 貢獻者） | 每週 |
+| 日夜線、晨昏帶 | App 自己計算（太陽位置，與衛星過境同一套公式） | 不連線，每分鐘重算 | — | 每分鐘 |
 | 即時車位、公車動態、道路影像（TDX） | [TDX 運輸資料流通服務](https://tdx.transportdata.tw) | 使用者自己的金鑰，直連，失敗改轉送（不快取） | 政府資料開放授權條款第 1 版 | 即時 |
 | 測速執法點 | 內政部警政署「測速執法設置點」[資料集 7320](https://data.gov.tw/dataset/7320)（2026-09-20 快照，1,895 筆） | 打包 | 政府資料開放授權條款第 1 版 | 手動重建 |
 | 公路影像目錄 | 高速公路局、公路局影像（座標與名稱來自 GeoDeck 0.7 的目錄快照，2026-09-20） | 打包；影像本身由主管機關伺服器提供 | 各主管機關 | 手動重建 |

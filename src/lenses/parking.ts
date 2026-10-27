@@ -1,8 +1,9 @@
-// 停車：island-wide parking catalog, live counts (TDX, own key), my car.
+// 停車：island-wide parking catalog, live counts (city open data, or TDX with the visitor's own key), my car.
 
 import { Marker, type MapGeoJSONFeature } from "maplibre-gl";
+import { hasOpenFeed, openFeedName, openLots, OPEN_FEED_CITIES } from "../data/cityparking";
 import { hasTdx } from "../data/keys";
-import { osmName, osmRef, osmUrl, parkingDetails } from "../data/osmparking";
+import { chargerDetails, osmName, osmRef, osmUrl, parkingDetails } from "../data/osmparking";
 import { catalogLots, catalogSummary, kindLabel, liveStatus, mergeLots, type CatalogLot } from "../data/parking";
 import { parkedCar, setParkedCar } from "../data/places";
 import { parkingCameraLinks } from "../data/roads";
@@ -14,12 +15,23 @@ import { escapeHtml as esc, formatCoord, safeUrl } from "../lib/util";
 import { EMPTY, addLayers, hideLayers, setData } from "../map/globe";
 import { every, viewBounds, type AppContext, type Chip, type Lens } from "./lens";
 
-const LAYERS = ["pk-cluster", "pk-cluster-count", "pk-dot", "pk-sign", "pk-summary", "pk-summary-label", "pk-osm", "pk-osm-name"];
+const OPEN_NAMES = "臺北、桃園、臺中、臺南";
+
+interface LiveFeed {
+  key: string;
+  code: string;
+  name: string;
+  kind: LiveLot["kind"];
+  /** The city's own open feed rather than TDX. */
+  open: boolean;
+}
+
+const LAYERS = ["pk-cluster", "pk-cluster-count", "pk-dot", "pk-sign", "pk-summary", "pk-summary-label", "pk-osm", "pk-osm-name", "pk-ev"];
 
 export class ParkingLens implements Lens {
   id = "parking" as const;
   title = "停車";
-  private on = { lots: true, curb: true, live: true, car: true };
+  private on = { lots: true, curb: true, live: true, ev: true, car: true };
   private catalog: CatalogLot[] = [];
   /** Keyed "lot:Tainan" / "curb:Tainan". */
   private live = new Map<string, { at: number; lots: LiveLot[] }>();
@@ -41,6 +53,7 @@ export class ParkingLens implements Lens {
   constructor(private ctx: AppContext) {
     ctx.onFeatureTap(["pk-sign", "pk-dot"], (f) => this.showLot(f));
     ctx.onFeatureTap(["pk-osm"], (f) => void this.showOsmLot(f));
+    ctx.onFeatureTap(["pk-ev"], (f) => void this.showCharger(f));
     ctx.onFeatureTap(["pk-cluster", "pk-summary"], (f) => {
       const c = (f.geometry as GeoJSON.Point).coordinates as [number, number];
       ctx.map.easeTo({ center: c, zoom: Math.max(ctx.map.getZoom() + 2, 12) });
@@ -51,16 +64,13 @@ export class ParkingLens implements Lens {
     return [
       { id: "lots", label: "停車場", on: this.on.lots },
       { id: "curb", label: "路邊／車格", on: this.on.curb },
-      { id: "live", label: "即時車位", on: this.on.live && hasTdx(), needs: "tdx" },
+      { id: "live", label: "即時車位", on: this.on.live },
+      { id: "ev", label: "充電站", on: this.on.ev },
       { id: "car", label: parkedCar() ? "我的車" : "記住停車位置", on: this.on.car && !!parkedCar() },
     ];
   }
 
   toggleChip(id: string): void {
-    if (id === "live" && !hasTdx()) {
-      this.ctx.openSettings("tdx");
-      return;
-    }
     if (id === "car") {
       this.carAction();
       return;
@@ -72,11 +82,12 @@ export class ParkingLens implements Lens {
   }
 
   renderExtra(el: HTMLElement): void {
+    const ev = this.on.ev ? ` <span class="lg-ev">⚡</span>充電站` : "";
     if (this.world) {
-      el.innerHTML = `<p class="legend"><span class="lg-lot">P</span>停車場（OpenStreetMap 全球資料）<b class="lg-old">?</b>沒有即時格數 · 點開看收費、營業時間與總車位</p>`;
+      el.innerHTML = `<p class="legend"><span class="lg-lot">P</span>停車場（OpenStreetMap 全球資料）<b class="lg-old">?</b>沒有即時格數${ev} · 點開看收費、營業時間與總車位</p>`;
       return;
     }
-    el.innerHTML = `<p class="legend"><span class="lg-lot">P</span>停車場 <span class="lg-curb">路</span>路邊 <b class="lg-ok">12</b>剩餘格數 <b class="lg-low">3</b>快滿 <b class="lg-full">滿</b> <b class="lg-old">?</b>沒有即時資料或超過 5 分鐘</p>`;
+    el.innerHTML = `<p class="legend"><span class="lg-lot">P</span>停車場 <span class="lg-curb">路</span>路邊 <b class="lg-ok">12</b>剩餘格數 <b class="lg-low">3</b>快滿 <b class="lg-full">滿</b> <b class="lg-old">?</b>沒有即時資料或已過時${ev}</p>`;
   }
 
   activate(): void {
@@ -135,8 +146,8 @@ export class ParkingLens implements Lens {
       setData(map, "pk-summary", EMPTY);
       this.catalog = await catalogLots(view);
       if (seq !== this.seq) return;
-      const wantLive = this.on.live && hasTdx();
-      const feeds = wantLive ? this.feedsFor(view, zoom) : [];
+      const feeds = this.on.live ? this.feedsFor(view, zoom) : [];
+      const wantLive = feeds.length > 0;
       // Draw the catalog and the last counts we have right away; TDX may take
       // a while when the key's per-minute budget is used up.
       this.draw(feeds.flatMap((f) => this.live.get(f.key)?.lots ?? []), wantLive ? "pending" : "off");
@@ -167,39 +178,54 @@ export class ParkingLens implements Lens {
     setData(this.ctx.map, "pk", { type: "FeatureCollection", features });
     this.drawLayers();
     const parts = [`${features.length.toLocaleString()} 處`];
-    if (phase === "off") parts.push(hasTdx() ? "即時車位已關閉" : "即時車位需 TDX 金鑰");
+    if (phase === "off") parts.push(!this.on.live ? "即時車位已關閉" : this.on.lots ? `這個縣市的即時車位需 TDX 金鑰（${OPEN_NAMES}免金鑰）` : "");
     else {
       const counted = (["lot", "curb"] as const).flatMap((kind) => {
         const rows = merged.live.filter((l) => l.kind === kind);
         const fresh = rows.filter((l) => ["fresh", "full"].includes(liveStatus(l, now).state)).length;
         return rows.length ? [`${kind === "lot" ? "停車場" : "路段"} ${fresh}/${rows.length}`] : [];
       });
-      if (counted.length) parts.push(`即時：${counted.join("、")} 有 5 分鐘內資料`);
-      parts.push(phase === "pending" ? "正在更新即時車位…" : counted.length ? "" : "此區沒有 TDX 即時車位");
+      if (counted.length) parts.push(`即時：${counted.join("、")} 有最新資料`);
+      parts.push(phase === "pending" ? "正在更新即時車位…" : counted.length ? "" : "此區沒有即時車位資料");
     }
     const errors = phase === "done" ? this.liveErrors : [];
     if (errors.length) parts.push(errors.join("；"));
     this.ctx.status("parking", parts.filter(Boolean).join(" · "), errors.length ? "warn" : undefined);
   }
 
-  private feedsFor(view: ReturnType<typeof viewBounds>, zoom: number): Array<{ key: string; code: string; name: string; kind: LiveLot["kind"] }> {
+  private feedsFor(view: ReturnType<typeof viewBounds>, zoom: number): LiveFeed[] {
     const center = { lat: (view.north + view.south) / 2, lng: (view.east + view.west) / 2 };
-    const feeds: Array<{ key: string; code: string; name: string; kind: LiveLot["kind"] }> = [];
+    const feeds: LiveFeed[] = [];
+    const tdx = hasTdx();
     // Only the city under the map centre: each city is two calls a minute.
     for (const c of citiesAt(center).slice(0, 1)) {
-      if (this.on.lots) feeds.push({ key: `lot:${c.code}`, code: c.code, name: c.name, kind: "lot" });
+      // Cities that publish their own counts need no key (and spare the visitor's TDX budget).
+      const open = hasOpenFeed(c.code);
+      if (this.on.lots && (open || tdx)) feeds.push({ key: `lot:${c.code}`, code: c.code, name: c.name, kind: "lot", open });
       // Kerbside counts only help street by street, and each city is one more TDX call.
-      if (this.on.curb && zoom >= 13 && !this.noCurbFeed.has(c.code)) feeds.push({ key: `curb:${c.code}`, code: c.code, name: c.name, kind: "curb" });
+      if (this.on.curb && tdx && zoom >= 13 && !this.noCurbFeed.has(c.code)) feeds.push({ key: `curb:${c.code}`, code: c.code, name: c.name, kind: "curb", open: false });
     }
     return feeds;
   }
 
-  private async fetchLive(feeds: ReturnType<ParkingLens["feedsFor"]>, force: boolean): Promise<LiveLot[]> {
+  private async fetchLive(feeds: LiveFeed[], force: boolean): Promise<LiveLot[]> {
     this.liveErrors = [];
     const out: LiveLot[] = [];
     await Promise.all(
       feeds.map(async (f) => {
         const cached = this.live.get(f.key);
+        if (f.open) {
+          // The city's file is kept for a minute inside openLots; this only re-joins it with the view.
+          try {
+            const lots = await openLots(f.code, this.catalog, force);
+            this.live.set(f.key, { at: Date.now(), lots });
+            out.push(...lots);
+          } catch (e) {
+            if (cached) out.push(...cached.lots);
+            this.liveErrors.push(`${f.name}停車場即時：${(e as Error).message}`);
+          }
+          return;
+        }
         if (cached && !force && Date.now() - cached.at < 60000) {
           out.push(...cached.lots);
           return;
@@ -285,7 +311,24 @@ export class ParkingLens implements Lens {
         },
         paint: { "text-color": "#93c5fd", "text-halo-color": "#04080d", "text-halo-width": 1.2 },
       });
+    // EV charging points everywhere, from the same tiles; under the parking signs.
+    if (map.getSource("omt") && !map.getLayer("pk-ev"))
+      map.addLayer({
+        id: "pk-ev",
+        type: "symbol",
+        source: "omt",
+        "source-layer": "poi",
+        minzoom: 14,
+        filter: ["==", ["get", "subclass"], "charging_station"],
+        layout: {
+          "icon-image": "bolt",
+          "icon-size": ["interpolate", ["linear"], ["zoom"], 14, 0.6, 17, 0.85],
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true,
+        },
+      });
     for (const id of ["pk-osm", "pk-osm-name"]) if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", this.world && this.on.lots ? "visible" : "none");
+    if (map.getLayer("pk-ev")) map.setLayoutProperty("pk-ev", "visibility", this.on.ev ? "visible" : "none");
     addLayers(this.ctx.map, [
       {
         id: "pk-summary",
@@ -390,7 +433,11 @@ export class ParkingLens implements Lens {
     const address = live?.address || lot?.address;
     if (address) rows.push(`<p>地址：${esc(address)}</p>`);
     if (lot?.access) rows.push(`<p class="muted">${esc(lot.access)}</p>`);
-    const source = live ? `TDX 即時${live.kind === "curb" ? "路邊格位" : "車位"}（${live.city}，用你自己的金鑰）` : sourceName(lot!.source);
+    const source = !live
+      ? sourceName(lot!.source)
+      : live.source === "tdx"
+        ? `TDX 即時${live.kind === "curb" ? "路邊格位" : "車位"}（${live.city}，用你自己的金鑰）`
+        : `${openFeedName(OPEN_FEED_CITIES.find((c) => c.toLowerCase() === live.source) ?? "")}即時車位開放資料（免金鑰）`;
     const link = safeUrl(lot?.url);
     const body = this.ctx.sheet.open(
       "lot",
@@ -460,6 +507,53 @@ export class ParkingLens implements Lens {
       el.innerHTML = rows.join("");
     } catch {
       el.innerHTML = `<p class="muted">停車場 · 暫時讀不到收費與營業時間</p>`;
+    }
+  }
+
+  private async showCharger(f: MapGeoJSONFeature): Promise<void> {
+    const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates;
+    const ref = osmRef(f.id);
+    const title = osmName(f.properties) || "充電站";
+    const body = this.ctx.sheet.open(
+      "charger",
+      "EV CHARGING",
+      title,
+      `<div id="evInfo"><p class="muted">讀取充電站資料…</p></div>
+      <p class="micro">資料：© OpenStreetMap 貢獻者（ODbL）${ref ? ` · <a href="${esc(osmUrl(ref))}" target="_blank" rel="noopener">原始資料</a>` : ""}。沒有即時空位；插座、費率與開放時間以現場與營運商 App 為準。</p>
+      <div class="actions">
+        <button class="btn primary" id="lotGo">導航到這裡</button>
+        <button class="btn" id="lotPlace">這裡的天氣</button>
+        <button class="btn" id="lotPark">我停在這裡</button>
+      </div>`,
+    );
+    this.wireLotActions(body, { lat, lng, title });
+    const el = body.querySelector("#evInfo")!;
+    if (!ref) {
+      el.innerHTML = `<p class="muted">充電站 · 沒有更多資料</p>`;
+      return;
+    }
+    try {
+      const d = await chargerDetails(ref);
+      if (!d) {
+        el.innerHTML = `<p class="muted">充電站 · 這筆資料已更新或移除</p>`;
+        return;
+      }
+      const rows: string[] = [];
+      if (d.closed) rows.push(`<p><span class="badge full">不對外開放</span> 標記為私人充電站</p>`);
+      if (d.operator && d.operator !== d.name) rows.push(`<p>營運：${esc(d.operator)}</p>`);
+      if (d.sockets.length)
+        rows.push(
+          `<p>插座：${d.sockets.map((x) => `${esc(x.label)}${x.count !== null ? ` × ${x.count}` : ""}${x.output ? `（${esc(x.output)}）` : ""}`).join("、")}</p>`,
+        );
+      else rows.push(`<p class="muted">沒有標記插座類型</p>`);
+      if (d.capacity) rows.push(`<p>可同時充電：${d.capacity} 輛</p>`);
+      if (d.rate) rows.push(`<p>費用：${esc(d.rate)}</p>`);
+      if (d.hours) rows.push(`<p>開放時間：<span class="mono">${esc(d.hours)}</span></p>`);
+      if (d.address) rows.push(`<p>地址：${esc(d.address)}</p>`);
+      if (d.notes.length) rows.push(`<p class="muted">${esc(d.notes.join("；"))}</p>`);
+      el.innerHTML = rows.join("");
+    } catch {
+      el.innerHTML = `<p class="muted">充電站 · 暫時讀不到插座與收費資料</p>`;
     }
   }
 
