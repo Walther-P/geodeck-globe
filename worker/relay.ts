@@ -160,7 +160,6 @@ export const RELAY_RULES: RelayRule[] = [
     keyed: false,
     staleTtl: 3600,
   },
-  { id: "park-tainan", host: "parkweb.tainan.gov.tw", path: /^\/api\/parking\.php$/, method: "GET", ttl: 60, keyed: false, staleTtl: 3600 },
   {
     id: "tdx-token",
     host: "tdx.transportdata.tw",

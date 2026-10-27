@@ -256,7 +256,6 @@ const results = await page.evaluate(async (keys) => {
     const lots = d.flatMap((g) => g.ParkingLots ?? []);
     return `${lots.length} lots, newest ${lots.map((l) => l.Updatetime ?? "").sort().at(-1)}`;
   });
-  await probe("Park Tainan", "https://parkweb.tainan.gov.tw/api/parking.php", (d) => `${n(d)} lots, newest ${d.map((l) => l.update_time ?? "").sort().at(-1)}`);
   // Bike share: CityBikes (YouBike in a dozen Taiwanese cities, ~800 systems worldwide).
   await probe("Bikes CityBikes networks", "https://api.citybik.es/v2/networks?fields=id,name,location", (d) => `${n(d.networks)} networks, ${d.networks.filter((x) => x.location?.country === "TW").length} in Taiwan`);
   await probe("Bikes YouBike Taipei", "https://api.citybik.es/v2/networks/youbike-taipei", (d) => `${n(d.network?.stations)} stations, ${d.network?.stations?.[0]?.timestamp}`);
@@ -319,7 +318,7 @@ for (const [name, w, h, view, lenses, tdx, want] of [
       await p.waitForTimeout(5000);
     }
     const counts = status.match(/停車場 (\d+)\/(\d+)/);
-    results.push({ name: "App: Tainan parking (city feed, TDX kerbside)", direct: counts && Number(counts[1]) > 0 ? "ok" : "check", relay: "-", note: status.slice(0, 200) });
+    results.push({ name: "App: Tainan parking with TDX key", direct: counts && Number(counts[1]) > 0 ? "ok" : "check", relay: "-", note: status.slice(0, 200) });
   }
   await p.screenshot({ path: `${out}${name}.png` });
   await ctx.close();

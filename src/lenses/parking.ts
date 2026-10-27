@@ -15,7 +15,7 @@ import { escapeHtml as esc, formatCoord, safeUrl } from "../lib/util";
 import { EMPTY, addLayers, hideLayers, setData } from "../map/globe";
 import { every, viewBounds, type AppContext, type Chip, type Lens } from "./lens";
 
-const OPEN_NAMES = "臺北、桃園、臺中、臺南";
+const OPEN_NAMES = "臺北、桃園、臺中";
 
 interface LiveFeed {
   key: string;
@@ -220,11 +220,15 @@ export class ParkingLens implements Lens {
             const lots = await openLots(f.code, this.catalog, force);
             this.live.set(f.key, { at: Date.now(), lots });
             out.push(...lots);
+            return;
           } catch (e) {
-            if (cached) out.push(...cached.lots);
-            this.liveErrors.push(`${f.name}停車場即時：${(e as Error).message}`);
+            if (!hasTdx()) {
+              if (cached) out.push(...cached.lots);
+              this.liveErrors.push(`${f.name}停車場即時：${(e as Error).message}`);
+              return;
+            }
+            // The city's own file failed: the visitor's TDX key covers the same lots.
           }
-          return;
         }
         if (cached && !force && Date.now() - cached.at < 60000) {
           out.push(...cached.lots);

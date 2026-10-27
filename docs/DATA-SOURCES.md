@@ -16,7 +16,7 @@
 | 火箭發射時程 | [The Space Devs Launch Library 2](https://thespacedevs.com/llapi) | 直連，失敗改轉送（快取 1 小時） | 免費方案每 IP 每小時 15 次 | 每小時 |
 | 衛星軌道 | [CelesTrak](https://celestrak.org) GP 資料，SGP4 推算 | 轉送（快取 4 小時）；建置時另存快照 | CelesTrak 使用條款 | 每日 |
 | 停車目錄 | OpenStreetMap ＋ 臺北、新北、桃園、臺中、臺南開放資料（GeoDeck 0.7 整理，2026-09-27） | 打包在 `public/data/parking/` | ODbL（含 OSM）＋政府資料開放授權條款；見 `public/data/parking/LICENSE.md` | 手動重建 |
-| 即時車位（免金鑰） | 臺北市停車管理工程處 [TCMSV_allavailable.xml](https://data.taipei)、桃園市政府交通局停車場資訊（XML）、臺中市政府交通局 ParkingSpotListAPIV2、臺南市停車場網站 parkweb API | 臺北、桃園、臺南不允許瀏覽器讀取，經轉送（快取 60 秒，來源失敗時回最後一份 1 小時內的資料）；臺中直連。地圖中心在這四市時使用，不需要任何金鑰 | 政府資料開放授權條款第 1 版 | 桃園、臺中 1 至 2 分鐘；臺北每 5 分鐘（檔案晚 2–3 分鐘出現）、臺南各場 4–6 分鐘（2026-10-27 實測），這兩個來源 10 分鐘內的數字才顯示 |
+| 即時車位（免金鑰） | 臺北市停車管理工程處 [TCMSV_allavailable.xml](https://data.taipei)、桃園市政府交通局停車場資訊（XML）、臺中市政府交通局 ParkingSpotListAPIV2 | 臺北、桃園經轉送（快取 60 秒，來源失敗時回最後一份 1 小時內的資料；臺北的檔案壓縮後小很多）；臺中直連。地圖中心在這三市時使用，不需要任何金鑰。失敗時若使用者有 TDX 金鑰就改用 TDX | 政府資料開放授權條款第 1 版 | 桃園、臺中 1 至 2 分鐘；臺北每 5 分鐘（檔案晚 2–3 分鐘出現，2026-10-27 實測），所以臺北 10 分鐘內的數字才顯示 |
 | 共享單車 | [CityBikes](https://citybik.es)（YouBike 臺北、新北、桃園、新竹、臺中、嘉義、臺南、高雄…與全球約 800 個系統） | 直連（允許瀏覽器讀取）；系統清單每次開啟讀一次，畫面附近最多 3 個系統每分鐘更新 | CityBikes API 條款（需標示 CityBikes）；資料屬各營運商 | 約每分鐘 |
 | 充電站 | OpenStreetMap 的 `amenity=charging_station`，取自底圖向量圖磚（`poi` 圖層 `subclass=charging_station`） | 不另外連線；點開才向 OpenStreetMap API 讀插座類型、數量、功率、收費、營業時間。沒有即時空位 | ODbL（© OpenStreetMap 貢獻者） | 每週（圖磚） |
 | 3D 建築 | OpenFreeMap 向量圖磚的 `building` 圖層（`render_height`） | 底圖本身的圖磚，14 級以上顯示，Google 底圖上也疊加 | ODbL（© OpenStreetMap 貢獻者） | 每週 |
@@ -72,6 +72,7 @@ twipcam 轉載的靜態快照：只在有人點開那支鏡頭時才載入，標
 | TDX 連續呼叫 | — | 每分鐘第 6 次回 429 | 回應 `API rate limit exceeded`、`Retry-After` 約 20 秒（間隔 3 秒也一樣），所以是每分鐘額度；App 每分鐘最多 5 次、停車優先、靜態清單快取 6 小時 |
 | Google 標誌圖檔 | 可（`<img>`） | — | `maps.gstatic.com/mapfiles/api-3/images/google_white5(_hdpi).png` 與 `www.gstatic.com` 品牌圖可載入；`developers.google.com` 的圖檔網址失效 |
 | App 端到端（臺南停車＋TDX 金鑰） | — | 可 | 正式網站實測：「577 處 · 即時：停車場 76/108、路段 451/451 有 5 分鐘內資料」 |
+| 臺南停車網 parkweb（免金鑰候選） | 不可（CORS） | **不可** | 從 GitHub 伺服器讀得到（269 場，各場 4–6 分鐘回報），但 Cloudflare 轉送讀到的是 200 空白頁（2026-10-27），所以臺南的即時車位仍要 TDX 金鑰 |
 | TDX 路邊停車 | — | 可 | `ParkingSegments`（`ParkingSegmentPosition` 為點）與 `CurbParkingSegmentAvailabilities`（每分鐘更新，有 `DataCollectTime`）；臺南、臺北已實測 |
 | 氣象署 | 可 | 可 | 特報、地震報告、颱風（欄位為大寫開頭，例如 `TropicalCyclones.TropicalCyclone`） |
 | 國外道路影像清單（2026-10-20） | 香港、新加坡、芬蘭、倫敦、加州、愛荷華、渥太華、卡加利可 | 紐西蘭（要送 `Accept: application/json`，否則回 XML）、新南威爾斯、西班牙、冰島、紐約市、馬里蘭、卑詩省、多倫多要轉送 | 影像網址都試過能載入；昆士蘭文件裡的公用金鑰額度用完（429），已移除；奧斯汀（403）、魁北克（403）、德國 Autobahn（清單空）、維吉尼亞（404）、斯洛維尼亞（502）不能用；安大略、亞伯達、華盛頓州要金鑰 |

@@ -153,15 +153,16 @@ const fixtures = {
       };
     return {};
   },
-  // Tainan's own parking site (keyless counts); TDX above still serves the kerbside segments.
-  "parkweb.tainan.gov.tw": () => {
+  // Taichung's own feed (keyless counts), lots grouped by area.
+  "motoretag.taichung.gov.tw": () => {
     const tw = (minsAgo) => new Date(now - minsAgo * 60000 + 8 * 3600000).toISOString().slice(0, 19).replace("T", " ");
-    return [
-      ["A1", "府前路停車場", 22.9935, 120.2032, 42, 1],
-      ["B2", "中正立體停車場", 22.9905, 120.2068, 6, 2],
-      ["C3", "民生地下停車場", 22.9952, 120.2071, 0, 1],
-      ["D4", "西門停車場", 22.9898, 120.2015, 15, 20],
-    ].map(([code, name, lat, lng, car, age]) => ({ code, name, address: "臺南市中西區", car, car_total: 120, chargeFee: "30元/時", update_time: tw(age), lnglat: `${lat},${lng}` }));
+    const lots = [
+      ["T1", "臺中車站停車場", 24.1371, 120.6866, 42, 1],
+      ["T2", "建國市場停車場", 24.1352, 120.6884, 6, 2],
+      ["T3", "綠川停車場", 24.1392, 120.6851, 0, 1],
+      ["T4", "復興路停車場", 24.1341, 120.6838, 15, 20],
+    ];
+    return [{ Area: "中區", ParkingLots: lots.map(([ID, Position, Y, X, AvailableCar, age]) => ({ ID, Position, X, Y, TotalCar: 120, AvailableCar, Notes: "30元/時", Updatetime: tw(age) })) }];
   },
   "api.citybik.es": (url) => {
     const path = new URL(url).pathname;
@@ -208,8 +209,8 @@ const shots = [
   { name: "phone-taiwan-sky", w: 393, h: 852, view: { lng: 121, lat: 23.8, zoom: 6.6 }, lenses: ["weather", "sky"], tap: "now" },
   { name: "phone-tainan-parking", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15.6 }, lenses: ["traffic", "parking"], healthy: true, tdx: true },
   { name: "phone-tainan-traffic", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15.2 }, lenses: ["parking", "traffic"], healthy: true, expect: /YouBike：畫面中 3 站/ },
-  // No key at all: Tainan's own feed still gives counts.
-  { name: "phone-tainan-parking-open", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15.6 }, lenses: ["traffic", "parking"], healthy: true, expect: /即時：停車場 3\/4 有最新資料/ },
+  // No key at all: Taichung's own feed still gives counts.
+  { name: "phone-taichung-parking-open", w: 393, h: 852, view: { lng: 120.6862, lat: 24.1366, zoom: 15.6 }, lenses: ["traffic", "parking"], healthy: true, expect: /即時：停車場 3\/4 有最新資料/ },
   { name: "phone-locate", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15 }, lenses: ["parking"], locate: true, pinchUi: true },
   {
     name: "phone-shared-link",

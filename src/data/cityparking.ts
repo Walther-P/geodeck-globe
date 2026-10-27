@@ -1,12 +1,14 @@
 // Live parking counts the cities publish themselves, readable without any
-// key: Taipei, Taoyuan, Taichung and Tainan.
+// key: Taipei, Taoyuan and Taichung.
 // With these, counts show for everyone; TDX (the visitor's own key) still
 // covers other cities and kerbside segments. Every row carries the city's own
 // update time and liveStatus judges it. Taoyuan and Taichung refresh within a
 // minute or two, so the usual five minutes apply. Taipei publishes its file
-// every five minutes and it lands two to three minutes late, and Tainan's lots
-// report every four to six minutes (measured 2026-10-27), so for those two a
-// count stays good for ten minutes: one missed cycle, not a guess.
+// every five minutes and it lands two to three minutes late (measured
+// 2026-10-27), so a Taipei count stays good for ten minutes: one missed
+// cycle, not a guess.
+// Not here: New Taipei's feed refuses outside readers, and Tainan's parking
+// site answers Cloudflare (our relay) with an empty page, so both stay on TDX.
 
 import { getJson, getText } from "../lib/net";
 import { parseTime } from "../lib/time";
@@ -23,7 +25,7 @@ const lot = (city: string, source: LiveLot["source"], row: Omit<LiveLot, "kind" 
   city,
   source,
   full: row.available === 0,
-  ...(source === "taipei" || source === "tainan" ? { maxAgeMs: SLOW_FEED_MAX_AGE_MS } : {}),
+  ...(source === "taipei" ? { maxAgeMs: SLOW_FEED_MAX_AGE_MS } : {}),
 });
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -94,40 +96,6 @@ export function parseTaichung(groups: Array<{ ParkingLots?: TaichungLot[] }>): L
   return out;
 }
 
-interface TainanLot {
-  code?: string;
-  name?: string;
-  address?: string;
-  car?: number | string;
-  car_total?: number | string;
-  chargeFee?: string;
-  update_time?: string;
-  lnglat?: string;
-}
-/** Tainan's parking site: "lnglat" is actually "lat,lng". */
-export function parseTainan(rows: TainanLot[]): LiveLot[] {
-  const out: LiveLot[] = [];
-  for (const r of Array.isArray(rows) ? rows : []) {
-    const [lat, lng] = (r.lnglat ?? "").split(",");
-    const p = point(lat, lng);
-    if (!p || !r.code) continue;
-    const free = num(r.car);
-    out.push(
-      lot("臺南市", "tainan", {
-        id: `tainan-web-${r.code}`,
-        name: (r.name ?? "").trim(),
-        ...p,
-        total: num(r.car_total),
-        available: free !== null && free >= 0 ? free : null,
-        updatedAt: parseTime(r.update_time),
-        address: (r.address ?? "").trim(),
-        fare: (r.chargeFee ?? "").trim(),
-      }),
-    );
-  }
-  return out;
-}
-
 interface TaipeiCount {
   available: number | null;
   updatedAt: number | null;
@@ -180,11 +148,6 @@ const FEEDS: Record<string, Feed<unknown>> = {
   Taichung: feed({
     name: "臺中市政府交通局",
     fetch: async () => parseTaichung(await getJson("https://motoretag.taichung.gov.tw/DataAPI/api/ParkingSpotListAPIV2", { timeout: 20000 })),
-    join: all,
-  }),
-  Tainan: feed({
-    name: "臺南市政府交通局",
-    fetch: async () => parseTainan(await getJson("https://parkweb.tainan.gov.tw/api/parking.php", { route: "relay", timeout: 20000 })),
     join: all,
   }),
 };

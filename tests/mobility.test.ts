@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { bikeCount, bikeTime, networksNear, parseNetworks, parseStations } from "../src/data/bikes";
-import { hasOpenFeed, joinTaipei, parseTainan, parseTaichung, parseTaipeiCounts, parseTaoyuan, taipeiTime } from "../src/data/cityparking";
+import { hasOpenFeed, joinTaipei, parseTaichung, parseTaipeiCounts, parseTaoyuan, taipeiTime } from "../src/data/cityparking";
 import { describeCharger } from "../src/data/osmparking";
 import { liveStatus, type CatalogLot } from "../src/data/parking";
 import { nightRing, subsolarPoint, sunAltitude, terminatorLat } from "../src/data/sun";
@@ -32,31 +32,31 @@ describe("keyless city parking", () => {
     expect(parseTaoyuan(xml)[0]).toMatchObject({ id: "taoyuan-P-DW-002", lat: 24.88, lng: 121.28, total: 200, available: 37, updatedAt: Date.parse("2026-10-27T09:42:44Z"), full: false });
   });
 
-  it("reads Taichung's grouped lots and Tainan's lat,lng pairs", () => {
+  it("reads Taichung's grouped lots and keeps each feed's own time limit", () => {
     const tc = parseTaichung([{ ParkingLots: [{ ID: "1003", Position: " 府後停車場 ", X: 120.68, Y: 24.14, TotalCar: 80, AvailableCar: 0, Updatetime: "2026-10-27 17:43:06" }] }]);
     expect(tc[0]).toMatchObject({ id: "taichung-1003", name: "府後停車場", lat: 24.14, lng: 120.68, available: 0, full: true });
-    const tn = parseTainan([{ code: "A01", name: "府前停車場", car: "42", car_total: "120", update_time: "2026-10-27 17:36:01", lnglat: "22.9935,120.2032" }, { code: "B", lnglat: "" }]);
-    expect(tn).toHaveLength(1);
-    expect(tn[0]).toMatchObject({ id: "tainan-web-A01", lat: 22.9935, lng: 120.2032, available: 42, total: 120 });
-    // Tainan's lots report every four to six minutes: one missed cycle is still the latest count.
-    const at = Date.parse("2026-10-27T09:36:01Z");
-    expect(liveStatus({ ...tn[0], updatedAt: at }, at + 8 * 60000).label).toBe("42");
-    expect(liveStatus({ ...tn[0], updatedAt: at }, at + 11 * 60000)).toMatchObject({ label: "?", text: "資料超過 10 分鐘（上次 42 格），暫不採用" });
+    const at = Date.parse("2026-10-27T09:43:06Z");
     // Taichung refreshes every minute, so the usual five minutes apply.
-    expect(liveStatus({ ...tc[0], available: 5, full: false, updatedAt: at }, at + 6 * 60000).label).toBe("?");
-    expect(["Taipei", "Taoyuan", "Taichung", "Tainan"].every(hasOpenFeed)).toBe(true);
-    expect(hasOpenFeed("Kaohsiung")).toBe(false);
+    expect(liveStatus({ ...tc[0], available: 5, full: false }, at + 6 * 60000).label).toBe("?");
+    // Taipei publishes every five minutes and late: one missed cycle is still the latest count.
+    const tp = joinTaipei(new Map([["taipei-TPE0001", { available: 12, updatedAt: at }]]), [
+      { id: "taipei-TPE0001", lat: 25.04, lng: 121.51, name: "x", kind: "lot", total: 10, rate: null, hours: null, address: "", access: null, source: "taipei" },
+    ]);
+    expect(liveStatus(tp[0], at + 8 * 60000).label).toBe("12");
+    expect(liveStatus(tp[0], at + 11 * 60000)).toMatchObject({ label: "?", text: "資料超過 10 分鐘（上次 12 格），暫不採用" });
+    expect(["Taipei", "Taoyuan", "Taichung"].every(hasOpenFeed)).toBe(true);
+    // New Taipei refuses outside readers; Tainan answers our relay with an empty page.
+    expect(hasOpenFeed("NewTaipei") || hasOpenFeed("Tainan")).toBe(false);
   });
 
   it("relays the city files that need it, and nothing else on those hosts", () => {
     for (const url of [
       "https://tcgbusfs.blob.core.windows.net/blobtcmsv/TCMSV_allavailable.xml",
       "https://opendata.tycg.gov.tw/api/dataset/f4cc0b12-86ac-40f9-8745-885bddc18f79/resource/0daad6e6-0632-44f5-bd25-5e1de1e9146f/download",
-      "https://parkweb.tainan.gov.tw/api/parking.php",
     ])
       expect(matchRelayRule(url, "GET")?.rule.keyed).toBe(false);
     expect(matchRelayRule("https://tcgbusfs.blob.core.windows.net/blobtcmsv/other.xml", "GET")).toBeNull();
-    expect(matchRelayRule("https://parkweb.tainan.gov.tw/admin.php", "GET")).toBeNull();
+    expect(matchRelayRule("https://parkweb.tainan.gov.tw/api/parking.php", "GET")).toBeNull();
   });
 });
 
