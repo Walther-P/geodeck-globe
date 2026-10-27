@@ -8,6 +8,7 @@
 
 import { getJson, getText, type Route } from "../lib/net";
 import { point, safeUrl, type Bounds } from "../lib/util";
+import { compassDeg, headingFromName, icelandicHeading, leadingCompass, viewHeading } from "./heading";
 import type { Camera } from "./tdx";
 
 export interface CamSource {
@@ -26,12 +27,15 @@ export interface CamSource {
 
 const box = (south: number, west: number, north: number, east: number): Bounds => ({ south, west, north, east });
 
-function cam(src: { id: string; name: string }, id: string | number, name: string, lat: unknown, lng: unknown, extra: Partial<Camera> & { image: string | null }): Camera | null {
+function cam(src: { id: string; name: string }, id: string | number, name: string, lat: unknown, lng: unknown, given: Partial<Camera> & { image: string | null }): Camera | null {
+  const { heading, ...extra } = given;
   const p = point(lat, lng);
   const image = safeUrl(extra.image, { httpsOnly: true });
   const video = safeUrl(extra.video, { httpsOnly: true });
   if (!p || (!image && !video)) return null;
-  return { page: null, refreshS: 60, ...extra, id: `${src.id}:${id}`, name: name.trim() || "道路鏡頭", ...p, image, video, source: src.name };
+  // A feed's own direction field wins; otherwise the name may say ("looking north").
+  const look = viewHeading(heading ?? headingFromName(name));
+  return { page: null, refreshS: 60, ...extra, ...look, id: `${src.id}:${id}`, name: name.trim() || "道路鏡頭", ...p, image, video, source: src.name };
 }
 
 function compact<T>(rows: Array<T | null>): T[] {
@@ -81,16 +85,26 @@ export function parseNewZealand(d: { response?: { camera?: NzRow[] } }): Camera[
     (d?.response?.camera ?? []).map((c) =>
       c.offline || c.underMaintenance || !c.imageUrl
         ? null
-        : cam(NZ, c.id ?? "", [c.name, c.description].filter(Boolean).join(" · "), c.latitude, c.longitude, { image: new URL(c.imageUrl, "https://www.trafficnz.info/").toString() }),
+        : cam(NZ, c.id ?? "", [c.name, c.description].filter(Boolean).join(" · "), c.latitude, c.longitude, {
+            image: new URL(c.imageUrl, "https://www.trafficnz.info/").toString(),
+            // "South along Hinds Highway" is where it looks; its "direction" field is only the carriageway.
+            heading: leadingCompass(c.description),
+          }),
     ),
   );
 }
 
 const NSW = { id: "nsw", name: "新南威爾斯交通局 Live Traffic NSW" };
-export function parseNsw(d: Array<{ id?: string; eventCategory?: string; geometry?: { coordinates?: number[] }; properties?: { title?: string; view?: string; href?: string } }>): Camera[] {
+export function parseNsw(d: Array<{ id?: string; eventCategory?: string; geometry?: { coordinates?: number[] }; properties?: { title?: string; view?: string; direction?: string; href?: string } }>): Camera[] {
   return compact(
     (Array.isArray(d) ? d : []).map((f) =>
-      f.eventCategory !== "liveCams" ? null : cam(NSW, f.id ?? "", [f.properties?.title, f.properties?.view].filter(Boolean).join(" · "), f.geometry?.coordinates?.[1], f.geometry?.coordinates?.[0], { image: f.properties?.href ?? null }),
+      f.eventCategory !== "liveCams"
+        ? null
+        : cam(NSW, f.id ?? "", [f.properties?.title, f.properties?.view].filter(Boolean).join(" · "), f.geometry?.coordinates?.[1], f.geometry?.coordinates?.[0], {
+            image: f.properties?.href ?? null,
+            // "N-E" etc., matching the "looking north-east" in the view text.
+            heading: compassDeg(f.properties?.direction),
+          }),
     ),
   );
 }
@@ -140,7 +154,9 @@ export function parseSpain(xml: string): Camera[] {
 const IS = { id: "is", name: "冰島道路管理局 Vegagerðin" };
 export function parseIceland(d: Array<{ Maelist_nr?: number; Myndavel?: string; Skyring?: string; Slod?: string; Breidd?: number; Lengd?: number }>): Camera[] {
   return compact(
-    (Array.isArray(d) ? d : []).map((c, i) => cam(IS, `${c.Maelist_nr ?? "x"}-${i}`, [c.Myndavel, c.Skyring].filter(Boolean).join(" · "), c.Breidd, c.Lengd, { image: c.Slod ?? null, refreshS: 300 })),
+    (Array.isArray(d) ? d : []).map((c, i) =>
+      cam(IS, `${c.Maelist_nr ?? "x"}-${i}`, [c.Myndavel, c.Skyring].filter(Boolean).join(" · "), c.Breidd, c.Lengd, { image: c.Slod ?? null, refreshS: 300, heading: icelandicHeading(c.Skyring) }),
+    ),
   );
 }
 
@@ -191,7 +207,17 @@ export function parseMaryland(d: { data?: Array<{ id?: string; name?: string; de
 
 const BC = { id: "bc", name: "卑詩省交通廳 DriveBC" };
 export function parseDriveBc(
-  d: Array<{ id?: number; name?: string; caption?: string; is_on?: boolean; should_appear?: boolean; marked_stale?: boolean; location?: { coordinates?: number[] }; links?: { imageDisplay?: string } }>,
+  d: Array<{
+    id?: number;
+    name?: string;
+    caption?: string;
+    orientation?: string;
+    is_on?: boolean;
+    should_appear?: boolean;
+    marked_stale?: boolean;
+    location?: { coordinates?: number[] };
+    links?: { imageDisplay?: string };
+  }>,
 ): Camera[] {
   return compact(
     (Array.isArray(d) ? d : []).map((c) =>
@@ -200,6 +226,7 @@ export function parseDriveBc(
         : cam(BC, c.id ?? "", [c.name, c.caption].filter(Boolean).join(" · "), c.location?.coordinates?.[1], c.location?.coordinates?.[0], {
             // The listed URL carries a timestamp; the bare one is always the latest frame.
             image: new URL(c.links.imageDisplay.split("?")[0], "https://www.drivebc.ca/").toString(),
+            heading: compassDeg(c.orientation),
           }),
     ),
   );

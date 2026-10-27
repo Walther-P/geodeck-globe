@@ -2,6 +2,7 @@
 
 import { getJson } from "../lib/net";
 import { distance, inBounds, type Bounds, type Point } from "../lib/util";
+import { headingFromName, laneHeadings, viewHeading } from "./heading";
 import type { Camera } from "./tdx";
 
 interface CameraCatalog {
@@ -17,10 +18,18 @@ export function bundledCameras(): Promise<{ updatedAt: string; cameras: Camera[]
     cameraCatalog = null;
     throw e;
   });
-  return cameraCatalog.then((c) => ({
-    updatedAt: c.updatedAt,
-    cameras: c.cameras.map((x) => ({ ...x, source: x.image ? "公路主管機關" : "twipcam 轉載的政府公開影像" })),
-  }));
+  return cameraCatalog.then((c) => {
+    // Freeway cameras say only which carriageway they watch; city ones often where they look.
+    const lanes = laneHeadings(c.cameras);
+    return {
+      updatedAt: c.updatedAt,
+      cameras: c.cameras.map((x) => {
+        const lane = lanes.get(x.id);
+        const look = lane === undefined ? viewHeading(headingFromName(x.name)) : { heading: lane, headingKind: "lanes" as const };
+        return { ...x, ...look, source: x.image ? "公路主管機關" : "twipcam 轉載的政府公開影像" };
+      }),
+    };
+  });
 }
 
 export interface EnforcementPoint {

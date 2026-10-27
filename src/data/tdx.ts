@@ -6,6 +6,7 @@ import { FeedError, getJson } from "../lib/net";
 import { read, remove, write } from "../lib/store";
 import { parseTime } from "../lib/time";
 import { num, point, safeUrl } from "../lib/util";
+import { headingFromName, viewHeading, type HeadingKind } from "./heading";
 import { hasTdx, keys } from "./keys";
 
 export const TDX_BASE = "https://tdx.transportdata.tw";
@@ -371,6 +372,9 @@ export interface Camera {
   views?: Array<{ label: string; image: string }>;
   /** For feeds whose image URL changes every frame: the newest one. */
   latest?: () => Promise<string | null>;
+  /** Degrees clockwise from north: where the camera looks ("view"), or the direction of travel of the carriageway it watches ("lanes"). */
+  heading?: number | null;
+  headingKind?: HeadingKind;
 }
 
 /**
@@ -421,6 +425,8 @@ export function normalizeCctv(data: { CCTVs?: TdxCctv[] } | TdxCctv[], scope: st
       mirror: null,
       page: null,
       source: "TDX",
+      // City cameras often say where they look ("往北"); RoadDirection is only the carriageway.
+      ...viewHeading(headingFromName(name)),
     });
   }
   return out;

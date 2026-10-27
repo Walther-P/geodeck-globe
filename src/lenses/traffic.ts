@@ -4,6 +4,7 @@ import type { MapGeoJSONFeature } from "maplibre-gl";
 import { bikeCount, bikeNetworks, networksNear, networkStations, type BikeNetwork, type BikeStation } from "../data/bikes";
 import { hasTdx } from "../data/keys";
 import { bundledCameras, enforcementPoints, type EnforcementPoint } from "../data/roads";
+import { compassName } from "../data/heading";
 import { citiesAt } from "../data/taiwan";
 import { buses, cameraSrc, cctv, type Bus, type Camera } from "../data/tdx";
 import { CAM_SOURCES, hlsNative, windyNear } from "../data/worldcams";
@@ -13,7 +14,7 @@ import { boundsOverlap, distance, escapeHtml as esc, inBounds, safeUrl } from ".
 import { EMPTY, addLayers, hideLayers, points, setData } from "../map/globe";
 import { every, viewBounds, type AppContext, type Chip, type Lens } from "./lens";
 
-const LAYERS = ["tr-cam-cluster", "tr-cam-count", "tr-cam", "tr-speed", "tr-speed-label", "tr-bus", "tr-bus-label", "tr-bike", "tr-bike-count"];
+const LAYERS = ["tr-cam-fan", "tr-cam-cluster", "tr-cam-count", "tr-cam", "tr-speed", "tr-speed-label", "tr-bus", "tr-bus-label", "tr-bike", "tr-bike-count"];
 /** Docks from street level up: a city has hundreds to thousands. */
 const BIKE_MIN_ZOOM = 14;
 
@@ -61,6 +62,12 @@ export class TrafficLens implements Lens {
     ctx.onFeatureTap(["tr-bike"], (f) => this.showBike(String(f.properties.id)));
   }
 
+  renderExtra(el: HTMLElement): void {
+    const wedge = (dashed: boolean) =>
+      `<svg class="lg-fan" viewBox="0 0 20 16" aria-hidden="true"><path d="M10 15 L3.6 3.4 A13 13 0 0 1 16.4 3.4 Z" fill="rgba(125,211,252,${dashed ? 0.18 : 0.38})" stroke="#7dd3fc" stroke-width="1.2"${dashed ? ' stroke-dasharray="2.5 2"' : ""}/></svg>`;
+    el.innerHTML = this.on.cameras ? `<p class="legend">${wedge(false)}鏡頭朝向 ${wedge(true)}國道監看的車道方向 · 放大到街道顯示</p>` : "";
+  }
+
   chips(): Chip[] {
     return [
       { id: "cameras", label: "即時影像", on: this.on.cameras },
@@ -78,7 +85,7 @@ export class TrafficLens implements Lens {
     const key = id as keyof typeof this.on;
     this.on[key] = !this.on[key];
     if (!this.active) return;
-    if (key === "cameras") this.on.cameras ? void this.loadCameras() : hideLayers(this.ctx.map, ["tr-cam-cluster", "tr-cam-count", "tr-cam"]);
+    if (key === "cameras") this.on.cameras ? void this.loadCameras() : hideLayers(this.ctx.map, ["tr-cam-fan", "tr-cam-cluster", "tr-cam-count", "tr-cam"]);
     if (key === "speed") this.on.speed ? void this.loadSpeed() : hideLayers(this.ctx.map, ["tr-speed", "tr-speed-label"]);
     if (key === "buses") this.on.buses ? void this.loadBuses() : (setData(this.ctx.map, "tr-buses", EMPTY), (this.notes.buses = ""));
     if (key === "bikes") this.on.bikes ? void this.loadBikes() : (setData(this.ctx.map, "tr-bikes", EMPTY), (this.notes.bikes = ""));
@@ -135,13 +142,38 @@ export class TrafficLens implements Lens {
 
   private drawCameras(): void {
     const map = this.ctx.map;
+    const cams = [...this.cams.values()];
     setData(
       map,
       "tr-cams",
-      points([...this.cams.values()], (c) => ({ id: c.id, live: !!(c.image || c.mirror || c.video) })),
+      points(cams, (c) => ({ id: c.id, live: !!(c.image || c.mirror || c.video) })),
       { radius: 44, maxZoom: 11 },
     );
+    // Which way each camera looks, as a fan under its icon (cameras stop clustering at 12).
+    setData(
+      map,
+      "tr-cam-fans",
+      points(
+        cams.filter((c) => typeof c.heading === "number"),
+        (c) => ({ id: c.id, heading: c.heading, icon: c.headingKind === "lanes" ? "fan-lanes" : "fan-view" }),
+      ),
+    );
     addLayers(map, [
+      {
+        id: "tr-cam-fan",
+        type: "symbol",
+        source: "tr-cam-fans",
+        minzoom: 12,
+        layout: {
+          "icon-image": ["get", "icon"],
+          "icon-size": ["interpolate", ["linear"], ["zoom"], 12, 0.55, 15, 0.85, 18, 1.2],
+          "icon-rotate": ["get", "heading"],
+          "icon-rotation-alignment": "map",
+          "icon-pitch-alignment": "map",
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true,
+        },
+      },
       {
         id: "tr-cam-cluster",
         type: "circle",
@@ -300,11 +332,17 @@ export class TrafficLens implements Lens {
       !hls && c.views && c.views.length > 1
         ? `<div class="chips cam-views">${c.views.map((v, i) => `<button class="chip" data-view="${i}" aria-pressed="${i === 0}">${esc(v.label)}</button>`).join("")}</div>`
         : "";
+    const facing =
+      typeof c.heading !== "number"
+        ? ""
+        : c.headingKind === "lanes"
+          ? `<p class="muted">監看往${compassName(c.heading)}的車道（地圖上虛線扇形）；國道資料只標示車道方向，鏡頭可能朝來車或去車</p>`
+          : `<p class="muted">鏡頭朝${compassName(c.heading)}（地圖上的扇形，依來源標示）</p>`;
     const body = this.ctx.sheet.open(
       "camera",
       hls || stream ? "LIVE CAMERA" : "CAMERA SNAPSHOT",
       c.name,
-      `${media}${views}
+      `${media}${views}${facing}
       <p class="micro">來源：${esc(c.source)}${still && !hls ? `（每 ${pace}自動更新）` : ""}。畫面時間以影像本身為準；載入失敗不代表道路有狀況。${page ? ` <a href="${esc(page)}" target="_blank" rel="noopener">原站</a>` : ""}</p>
       <div class="actions">
         ${current && !hls ? `<button class="btn" id="camReload">重新整理</button>` : ""}

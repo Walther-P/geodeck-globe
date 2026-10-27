@@ -209,6 +209,8 @@ const shots = [
   { name: "phone-taiwan-sky", w: 393, h: 852, view: { lng: 121, lat: 23.8, zoom: 6.6 }, lenses: ["weather", "sky"], tap: "now" },
   { name: "phone-tainan-parking", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15.6 }, lenses: ["traffic", "parking"], healthy: true, tdx: true },
   { name: "phone-tainan-traffic", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15.2 }, lenses: ["parking", "traffic"], healthy: true, expect: /YouBike：畫面中 3 站/ },
+  // Fans show which way cameras look (Tainan city names) and which carriageway freeway ones watch (N1).
+  { name: "phone-camera-fans", w: 393, h: 852, view: { lng: 120.2535, lat: 23.0255, zoom: 14.6 }, lenses: ["traffic"], healthy: true },
   // No key at all: Taichung's own feed still gives counts.
   { name: "phone-taichung-parking-open", w: 393, h: 852, view: { lng: 120.6862, lat: 24.1366, zoom: 15.6 }, lenses: ["traffic", "parking"], healthy: true, expect: /即時：停車場 3\/4 有最新資料/ },
   { name: "phone-locate", w: 393, h: 852, view: { lng: 120.205, lat: 22.992, zoom: 15 }, lenses: ["parking"], locate: true, pinchUi: true },

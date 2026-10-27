@@ -120,6 +120,27 @@ export function points<T extends { lat: number; lng: number }>(rows: T[], props:
 
 type Draw = (g: CanvasRenderingContext2D, s: number) => void;
 
+function fan(g: CanvasRenderingContext2D, s: number, lanes: boolean): void {
+  const c = s / 2;
+  const r = c - 2;
+  const half = (32 * Math.PI) / 180;
+  const up = -Math.PI / 2;
+  const shade = g.createRadialGradient(c, c, 4, c, c, r);
+  shade.addColorStop(0, lanes ? "rgba(125, 211, 252, 0.34)" : "rgba(125, 211, 252, 0.5)");
+  shade.addColorStop(1, lanes ? "rgba(125, 211, 252, 0.06)" : "rgba(125, 211, 252, 0.12)");
+  g.beginPath();
+  g.moveTo(c, c);
+  g.arc(c, c, r, up - half, up + half);
+  g.closePath();
+  g.fillStyle = shade;
+  g.fill();
+  g.strokeStyle = "#7dd3fc";
+  g.lineWidth = 1.4;
+  if (lanes) g.setLineDash([3, 3]);
+  g.stroke();
+  g.setLineDash([]);
+}
+
 const ICONS: Record<string, { size: number; draw: Draw }> = {
   plane: {
     size: 32,
@@ -244,6 +265,10 @@ const ICONS: Record<string, { size: number; draw: Draw }> = {
       g.fill();
     },
   },
+  // A camera's field of view, apex at the centre pointing up (north); rotated per camera.
+  "fan-view": { size: 76, draw: (g, s) => fan(g, s, false) },
+  // Freeway cameras: only the carriageway's direction of travel is known.
+  "fan-lanes": { size: 76, draw: (g, s) => fan(g, s, true) },
   bike: {
     size: 24,
     draw: (g, s) => {
