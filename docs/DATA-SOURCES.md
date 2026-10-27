@@ -15,6 +15,7 @@
 | 全球電台 | [Radio Browser](https://www.radio-browser.info)（社群資料庫） | 直連（允許瀏覽器讀取）；只用 https 串流 | 公開資料庫；播放時依其要求回報點擊 | 社群更新 |
 | 火箭發射時程 | [The Space Devs Launch Library 2](https://thespacedevs.com/llapi) | 直連，失敗改轉送（快取 1 小時） | 免費方案每 IP 每小時 15 次 | 每小時 |
 | 衛星軌道 | [CelesTrak](https://celestrak.org) GP 資料，SGP4 推算 | 轉送（快取 4 小時）；建置時另存快照 | CelesTrak 使用條款 | 每日 |
+| 縣市界線 | 內政部國土測繪中心直轄市、縣市界線（[taiwan-atlas](https://github.com/dkaoster/taiwan-atlas) 2021.9.20 的 TopoJSON） | `scripts/build-counties.mjs` 簡化到約 600 公尺、打包成 `src/data/counties.ts`（約 25 KB），用來判斷地圖中心在哪個縣市、該讀哪個城市的資料 | 政府資料開放授權條款第 1 版；taiwan-atlas 為 MIT | 手動重建 |
 | 停車目錄 | OpenStreetMap ＋ 臺北、新北、桃園、臺中、臺南開放資料（GeoDeck 0.7 整理，2026-09-27） | 打包在 `public/data/parking/` | ODbL（含 OSM）＋政府資料開放授權條款；見 `public/data/parking/LICENSE.md` | 手動重建 |
 | 即時車位（免金鑰） | 臺北市停車管理工程處 [TCMSV_allavailable.xml](https://data.taipei)、桃園市政府交通局停車場資訊（XML）、臺中市政府交通局 ParkingSpotListAPIV2 | 臺北、桃園經轉送（快取 60 秒，來源失敗時回最後一份 1 小時內的資料；臺北的檔案壓縮後小很多）；臺中直連。地圖中心在這三市時使用，不需要任何金鑰。失敗時若使用者有 TDX 金鑰就改用 TDX | 政府資料開放授權條款第 1 版 | 桃園、臺中 1 至 2 分鐘；臺北每 5 分鐘（檔案晚 2–3 分鐘出現，2026-10-27 實測），所以臺北 10 分鐘內的數字才顯示 |
 | 共享單車 | [CityBikes](https://citybik.es)（YouBike 臺北、新北、桃園、新竹、臺中、嘉義、臺南、高雄…與全球約 800 個系統） | 直連（允許瀏覽器讀取）；系統清單每次開啟讀一次，畫面附近最多 3 個系統每分鐘更新 | CityBikes API 條款（需標示 CityBikes）；資料屬各營運商 | 約每分鐘 |

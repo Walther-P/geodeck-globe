@@ -31,6 +31,8 @@
 - `src/data/bikes.ts`：共享單車（CityBikes，全球約 800 個系統，台灣各縣市 YouBike 都在內），交通圖層 14 級以上才讀
 - `src/map/extras.ts` + `src/data/sun.ts`：所有底圖共用的 3D 建築（OpenFreeMap `building` 高度）與日夜線、晨昏帶，
   圖層選單「地圖效果」可關；日夜線每分鐘依太陽位置重算
+- `src/data/taiwan.ts` + `src/data/counties.ts`：判斷一個點在哪個縣市（真實縣市界線，`node scripts/build-counties.mjs` 產生；
+  以前只用矩形，臺中車站被當成彰化、板橋被當成臺北）。海上或小島才退回矩形
 - `src/ui/locate.ts`：定位藍點、精度圈、指南針扇形（iOS 要在點擊當下要求方向權限）
 - `src/ui/track.ts`：點選追蹤（鏡頭跟隨、軌跡、駕駛艙視角、目標面板）；`src/ui/detect.ts`：偵測框 HUD（canvas）
 - `src/data/passes.ts`：衛星過境與肉眼可見判斷（太陽位置、地球陰影）、行事曆檔；`src/data/launches.ts`：火箭發射

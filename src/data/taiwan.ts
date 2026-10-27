@@ -1,7 +1,12 @@
 import type { Bounds, Point } from "../lib/util";
 import { inBounds } from "../lib/util";
+import { COUNTY_SHAPES } from "./counties";
 
-/** TDX city codes with rough bounding boxes, used to pick which city feed to load. */
+/**
+ * TDX city codes with rough bounding boxes. Which city a point is in comes
+ * from the real outlines (counties.ts); the boxes are the fallback at sea and
+ * on islets the outlines leave out.
+ */
 export interface City {
   code: string;
   name: string;
@@ -37,8 +42,21 @@ export const CITIES: City[] = [
 
 const area = (x: Bounds) => (x.north - x.south) * (x.east - x.west);
 
-/** Cities whose box contains the point, most specific first (boxes overlap near borders). */
+/** Even-odd test over all of a county's rings (holes included: Chiayi City inside Chiayi County). */
+function inShape(p: Point, rings: number[][] | undefined): boolean {
+  let hit = false;
+  for (const r of rings ?? [])
+    for (let i = 0, j = r.length - 2; i < r.length; j = i, i += 2) {
+      const [xi, yi, xj, yj] = [r[i], r[i + 1], r[j], r[j + 1]];
+      if (yi > p.lat !== yj > p.lat && p.lng < ((xj - xi) * (p.lat - yi)) / (yj - yi) + xi) hit = !hit;
+    }
+  return hit;
+}
+
+/** The city a point is in; near the coast or on an islet, the boxes that contain it, most specific first. */
 export function citiesAt(p: Point): City[] {
+  const exact = CITIES.filter((c) => inShape(p, COUNTY_SHAPES[c.code]));
+  if (exact.length) return exact;
   return CITIES.filter((c) => inBounds(p, c.bounds)).sort((a, z) => area(a.bounds) - area(z.bounds));
 }
 

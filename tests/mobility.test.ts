@@ -4,6 +4,7 @@ import { hasOpenFeed, joinTaipei, parseTaichung, parseTaipeiCounts, parseTaoyuan
 import { describeCharger } from "../src/data/osmparking";
 import { liveStatus, type CatalogLot } from "../src/data/parking";
 import { nightRing, subsolarPoint, sunAltitude, terminatorLat } from "../src/data/sun";
+import { citiesAt } from "../src/data/taiwan";
 import { matchRelayRule } from "../worker/relay";
 
 // Rows trimmed from what each feed answered on 2026-10-27 (scripts/live-probe.mjs checks them daily).
@@ -57,6 +58,95 @@ describe("keyless city parking", () => {
       expect(matchRelayRule(url, "GET")?.rule.keyed).toBe(false);
     expect(matchRelayRule("https://tcgbusfs.blob.core.windows.net/blobtcmsv/other.xml", "GET")).toBeNull();
     expect(matchRelayRule("https://parkweb.tainan.gov.tw/api/parking.php", "GET")).toBeNull();
+  });
+});
+
+describe("which city a place is in", () => {
+  it("names the right city from the real outlines, also near borders", () => {
+    const at = (lat: number, lng: number) => citiesAt({ lat, lng })[0]?.code;
+    expect({
+      taipeiStation: at(25.0478, 121.517),
+      taipei101: at(25.0339, 121.5645),
+      longshanTemple: at(25.0372, 121.4999),
+      neihu: at(25.0798, 121.5869),
+      beitou: at(25.1321, 121.5011),
+      muzhaZoo: at(24.9984, 121.5806),
+      banqiao: at(25.0136, 121.4626),
+      sanchong: at(25.0615, 121.4876),
+      yonghe: at(25.0083, 121.5155),
+      zhonghe: at(24.9993, 121.4993),
+      xindian: at(24.9676, 121.5418),
+      luzhou: at(25.0849, 121.4733),
+      tamsui: at(25.1696, 121.4405),
+      taoyuan: at(24.9937, 121.3009),
+      hsinchu: at(24.8016, 120.9714),
+      taichungStation: at(24.1371, 120.6866),
+      taichungCityHall: at(24.1618, 120.6466),
+      fengjia: at(24.1797, 120.6461),
+      wuriHsr: at(24.1121, 120.6157),
+      changhuaCity: at(24.0809, 120.5385),
+      lukang: at(24.0566, 120.4337),
+      yuanlin: at(23.9577, 120.5743),
+      caotun: at(23.9781, 120.6806),
+      tainan: at(22.9917, 120.2048),
+      kaohsiung: at(22.6273, 120.3014),
+      keelung: at(25.1316, 121.7397),
+      xizhi: at(25.0649, 121.6583),
+      ruifang: at(25.1088, 121.8104),
+      wulai: at(24.8652, 121.5506),
+      yilan: at(24.7570, 121.7531),
+      zhubei: at(24.8384, 121.0042),
+      hukou: at(24.9035, 121.0437),
+      yingge: at(24.9554, 121.3507),
+      linkou: at(25.0775, 121.3913),
+      chiayiCity: at(23.4801, 120.4491),
+      taibao: at(23.4597, 120.3328),
+      magong: at(23.5655, 119.5793),
+      kinmen: at(24.4320, 118.3186),
+      nangan: at(26.1597, 119.9497),
+    }).toEqual({
+      taipeiStation: "Taipei",
+      taipei101: "Taipei",
+      longshanTemple: "Taipei",
+      neihu: "Taipei",
+      beitou: "Taipei",
+      muzhaZoo: "Taipei",
+      banqiao: "NewTaipei",
+      sanchong: "NewTaipei",
+      yonghe: "NewTaipei",
+      zhonghe: "NewTaipei",
+      xindian: "NewTaipei",
+      luzhou: "NewTaipei",
+      tamsui: "NewTaipei",
+      taoyuan: "Taoyuan",
+      hsinchu: "Hsinchu",
+      taichungStation: "Taichung",
+      taichungCityHall: "Taichung",
+      fengjia: "Taichung",
+      wuriHsr: "Taichung",
+      changhuaCity: "ChanghuaCounty",
+      lukang: "ChanghuaCounty",
+      yuanlin: "ChanghuaCounty",
+      caotun: "NantouCounty",
+      tainan: "Tainan",
+      kaohsiung: "Kaohsiung",
+      keelung: "Keelung",
+      xizhi: "NewTaipei",
+      ruifang: "NewTaipei",
+      wulai: "NewTaipei",
+      yilan: "YilanCounty",
+      zhubei: "HsinchuCounty",
+      hukou: "HsinchuCounty",
+      yingge: "NewTaipei",
+      linkou: "NewTaipei",
+      chiayiCity: "Chiayi",
+      taibao: "ChiayiCounty",
+      magong: "PenghuCounty",
+      kinmen: "KinmenCounty",
+      nangan: "LienchiangCounty",
+    });
+    // At sea it still answers with the nearest box, as before.
+    expect(citiesAt({ lat: 22.6, lng: 120.25 })[0]?.code).toBe("Kaohsiung");
   });
 });
 
